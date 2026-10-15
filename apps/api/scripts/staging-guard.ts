@@ -29,6 +29,17 @@ export function assertApprovedStagingTarget(env: { confirm?: string; expectedRef
 type AuthUser = { id: string; email?: string | null; phone?: string | null; created_at?: string };
 const digits = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
 
+/** True only for a parseable, finite timestamp at or after `start`. Missing or malformed values fail closed. */
+export function createdAtOrAfter(createdAt: string | null | undefined, start: Date): boolean {
+  if (!createdAt) return false;
+  const t = new Date(createdAt).getTime();
+  return Number.isFinite(t) && t >= start.getTime();
+}
+
+/** Result shape of the Supabase Admin delete calls: failures come back in `error`, not as exceptions. */
+export type DeleteResult = { error: { message: string } | null };
+export type CleanupReport = { deleted: string[]; failed: { id: string; message: string }[] };
+
 /**
  * Tracks the users this run created. A user is recorded only with positive proof:
  *   - "created": the Admin API createUser call for it succeeded in this run, or
@@ -39,7 +50,9 @@ const digits = (p: string | null | undefined) => (p ?? "").replace(/\D/g, "");
 export class CreatedUsers {
   private readonly ids = new Set<string>();
   private readonly ownedEmails = new Set<string>();
-  constructor(private readonly startedAt: Date, private readonly runTag: string) {}
+  constructor(private readonly startedAt: Date, private readonly runTag: string) {
+    if (!Number.isFinite(startedAt.getTime())) throw new Error("CreatedUsers needs a valid start time");
+  }
 
   /** A unique address that belongs to this run only. */
   ownedEmail(label: string): string {
@@ -57,8 +70,7 @@ export class CreatedUsers {
   recordIfFresh(user: AuthUser | null | undefined, existedBefore: boolean): boolean {
     if (!user || existedBefore) return false;
     const email = user.email?.toLowerCase();
-    const created = user.created_at ? new Date(user.created_at) : null;
-    if (!email || !this.ownedEmails.has(email) || !created || created < this.startedAt) return false;
+    if (!email || !this.ownedEmails.has(email) || !createdAtOrAfter(user.created_at, this.startedAt)) return false;
     this.ids.add(user.id);
     return true;
   }
@@ -69,13 +81,36 @@ export class CreatedUsers {
    */
   recordIfFreshPhone(user: AuthUser | null | undefined, existedBefore: boolean, testPhone: string): boolean {
     if (!user || existedBefore || !digits(testPhone)) return false;
-    const created = user.created_at ? new Date(user.created_at) : null;
-    if (digits(user.phone) !== digits(testPhone) || !created || created < this.startedAt) return false;
+    if (digits(user.phone) !== digits(testPhone) || !createdAtOrAfter(user.created_at, this.startedAt)) return false;
     this.ids.add(user.id);
     return true;
   }
 
   has(id: string): boolean { return this.ids.has(id); }
-  forget(id: string): void { this.ids.delete(id); }
+  /**
+   * Deletes one owned user. The id is dropped from tracking ONLY after a confirmed deletion; an error result or
+   * a thrown exception keeps it tracked and is reported. Ids this run does not own are never passed to deleteFn.
+   */
+  async deleteOwned(id: string, deleteFn: (id: string) => Promise<DeleteResult>): Promise<{ ok: true } | { ok: false; message: string }> {
+    if (!this.ids.has(id)) return { ok: false, message: `refusing to delete ${id}: not created by this run` };
+    try {
+      const { error } = await deleteFn(id);
+      if (error) return { ok: false, message: error.message || "unknown error" };
+    } catch (e) {
+      return { ok: false, message: (e as Error).message || String(e) };
+    }
+    this.ids.delete(id);
+    return { ok: true };
+  }
+
+  /** Attempts every remaining owned user; anything not confirmed deleted is listed in `failed`. */
+  async cleanupAll(deleteFn: (id: string) => Promise<DeleteResult>): Promise<CleanupReport> {
+    const report: CleanupReport = { deleted: [], failed: [] };
+    for (const id of this.list()) {
+      const r = await this.deleteOwned(id, deleteFn);
+      if (r.ok) report.deleted.push(id); else report.failed.push({ id, message: r.message });
+    }
+    return report;
+  }
   list(): string[] { return [...this.ids]; }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { APPROVED_STAGING_REFS, assertApprovedStagingTarget, CreatedUsers } from "../scripts/staging-guard.js";
+import { APPROVED_STAGING_REFS, assertApprovedStagingTarget, createdAtOrAfter, CreatedUsers, type DeleteResult } from "../scripts/staging-guard.js";
 
 const REF = APPROVED_STAGING_REFS[0]!;
 const ok = { confirm: "this-is-staging", expectedRef: REF, supabaseUrl: `https://${REF}.supabase.co` };
@@ -57,11 +57,70 @@ describe("cleanup ownership", () => {
     expect(c.list()).toEqual(["p3"]);
   });
 
-  it("records users from a successful createUser call", () => {
+  it("records users from a successful createUser call; only a confirmed delete removes them", async () => {
     const c = new CreatedUsers(start, "run1");
     c.recordCreated({ id: "u9" });
     expect(c.has("u9")).toBe(true);
-    c.forget("u9");
+    expect(await c.deleteOwned("u9", async () => ({ error: null }))).toEqual({ ok: true });
     expect(c.list()).toEqual([]);
+  });
+});
+
+describe("timestamps fail closed", () => {
+  const start = new Date("2026-10-15T10:00:00Z");
+  it.each([["malformed", "not-a-date"], ["empty", ""], ["missing", undefined], ["older", "2026-10-15T09:59:59Z"]])(
+    "%s created_at is never treated as created by this run", (_n, value) => {
+      expect(createdAtOrAfter(value as string | undefined, start)).toBe(false);
+      const c = new CreatedUsers(start, "run1");
+      const mine = c.ownedEmail("applicant");
+      expect(c.recordIfFresh({ id: "u", email: mine, created_at: value as string | undefined }, false)).toBe(false);
+      expect(c.recordIfFreshPhone({ id: "p", phone: "919000000001", created_at: value as string | undefined }, false, "+919000000001")).toBe(false);
+      expect(c.list()).toEqual([]);
+    });
+  it("accepts a valid timestamp at or after the start", () => {
+    expect(createdAtOrAfter("2026-10-15T10:00:00Z", start)).toBe(true);
+  });
+  it("refuses an invalid start time", () => {
+    expect(() => new CreatedUsers(new Date("nope"), "run1")).toThrow();
+  });
+});
+
+describe("cleanup reports failures and keeps tracking undeleted users", () => {
+  const start = new Date("2026-10-15T10:00:00Z");
+  const owned = () => {
+    const c = new CreatedUsers(start, "run1");
+    c.recordCreated({ id: "ok-1" });
+    c.recordCreated({ id: "err-1" });
+    c.recordCreated({ id: "throw-1" });
+    return c;
+  };
+  const del = async (id: string): Promise<DeleteResult> => {
+    if (id.startsWith("err")) return { error: { message: "User not allowed" } };
+    if (id.startsWith("throw")) throw new Error("network down");
+    return { error: null };
+  };
+
+  it("drops an id only after a confirmed deletion", async () => {
+    const c = owned();
+    expect(await c.deleteOwned("err-1", del)).toEqual({ ok: false, message: "User not allowed" });
+    expect(c.has("err-1")).toBe(true);
+    expect(await c.deleteOwned("throw-1", del)).toEqual({ ok: false, message: "network down" });
+    expect(c.has("throw-1")).toBe(true);
+    expect(await c.deleteOwned("ok-1", del)).toEqual({ ok: true });
+    expect(c.has("ok-1")).toBe(false);
+  });
+
+  it("never calls delete for an id it does not own", async () => {
+    const c = owned();
+    let called = false;
+    const r = await c.deleteOwned("pre-existing-staff", async () => { called = true; return { error: null }; });
+    expect(r.ok).toBe(false);
+    expect(called).toBe(false);
+  });
+
+  it("cleanupAll lists every failure instead of reporting a clean run", async () => {
+    const report = await owned().cleanupAll(del);
+    expect(report.deleted).toEqual(["ok-1"]);
+    expect(report.failed).toEqual([{ id: "err-1", message: "User not allowed" }, { id: "throw-1", message: "network down" }]);
   });
 });

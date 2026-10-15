@@ -220,4 +220,13 @@ Not verified: anything that needs a live Supabase project, an SMS provider, real
 | Broken device-protocol link | ✅ Links between docs now use repo-root paths (`/docs/...`), which resolve on GitHub and from copies outside `docs/`. |
 | Clarifications | ✅ The checklist states that automated OTP checks prove the session flow, not email, carrier or DLT delivery (manual items D1/D2 were added). It also states that the launch gate enforces configuration only, and that `LAUNCH_APPROVED` is a tightly controlled human attestation. |
 
+### Third review follow-up (15 Oct 2026)
+
+| Item | Resolution |
+|---|---|
+| **Cleanup could fail silently.** `deleteUser` errors, which come back in the result object, were ignored, and ids were dropped from tracking anyway. The TOTP `deleteFactor` result was ignored too. | ✅ Fixed. `CreatedUsers.deleteOwned` drops an id only after a confirmed deletion; error results and thrown exceptions keep it tracked. `cleanupAll` returns every failure, and the verifier records a **FAIL** for any cleanup failure, which makes the exit code non-zero. A failed factor removal is reported the same way. `forget()` was removed, so the only way to untrack an id is a confirmed delete. |
+| **Invalid timestamps fail closed.** An invalid `created_at` became an `Invalid Date`, which compares as false and could pass the "created after start" check. | ✅ Fixed. `createdAtOrAfter` requires `Number.isFinite`, for email and phone ownership alike, and an invalid run start time is rejected. Regression tests cover malformed, empty, missing and older timestamps. |
+
+Tests: `test/staging-guard.test.ts` has 26 cases. Mutation checks confirm them: restoring the old timestamp comparison, or ignoring delete errors, makes the tests fail. API total: 192.
+
 Launch status: **NOT APPROVED.**

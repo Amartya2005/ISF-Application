@@ -162,7 +162,10 @@ async function main() {
           const me = await api("/v1/me", s.session.access_token);
           assert(me.status === 200, `GET /v1/me → ${me.status}`);
         } finally {
-          if (mine && s.user) { await admin.auth.admin.deleteUser(s.user.id); owned.forget(s.user.id); }   // frees the number
+          if (mine && s.user) {   // free the number for the next check; a failed delete is a failed check, not silence
+            const del = await owned.deleteOwned(s.user.id, (id) => admin.auth.admin.deleteUser(id));
+            if (!del.ok) throw new Error(`cleanup failed: could not delete test user ${s.user.id}: ${del.message}`);
+          }
         }
         return existedBefore ? "test number belongs to an existing user: not deleted" : "proves session flow, not carrier/DLT delivery (device protocol D2)";
       });
@@ -209,14 +212,22 @@ async function main() {
           const ok = await api("/v1/manage/editions/2026/applications", v.access_token);
           assert(ok.status === 200, `privileged call at aal2 → ${ok.status} ${ok.json?.code}`);
         } finally {
-          await admin.auth.admin.mfa.deleteFactor({ userId: session.user.id, id: f.id });   // leave the staff account as found
+          // Leave the staff account as found. A failed removal must not pass silently.
+          const { error: delErr } = await admin.auth.admin.mfa.deleteFactor({ userId: session.user.id, id: f.id });
+          if (delErr) record("Cleanup: remove the test TOTP factor from the staff account", "FAIL", `factor ${f.id}: ${delErr.message} — remove it in the dashboard`);
         }
       });
     } else {
       record("Staff MFA elevation", "SKIP", "set STAGING_STAFF_EMAIL (active Management account in the staging database)");
     }
   } finally {
-    for (const id of owned.list()) await admin.auth.admin.deleteUser(id).catch(() => undefined);
+    const cleanup = await owned.cleanupAll((id) => admin.auth.admin.deleteUser(id));
+    if (cleanup.failed.length) {
+      record("Cleanup: delete every user this run created", "FAIL",
+        cleanup.failed.map((f) => `${f.id}: ${f.message}`).join("; ") + " — delete these test users manually before the next run");
+    } else {
+      record("Cleanup: delete every user this run created", "PASS", `${cleanup.deleted.length} deleted`);
+    }
   }
 
   const failed = results.filter((r) => r.status === "FAIL").length;
