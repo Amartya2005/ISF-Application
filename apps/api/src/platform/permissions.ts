@@ -18,6 +18,17 @@ export type Permission =
   | "ranking.run"
   | "ranking.read"
   | "decision.correct"
+  // Phase 6: jury evaluation (FR-JRY-*) — Management configures and reviews; jurors evaluate their own assignments
+  | "jury.manage"
+  | "jury.review"
+  | "jury.evaluate"
+  // Phase 6: volunteer assignment (FR-VOL-*, PRD §4.4 matrix)
+  | "volunteer.read"
+  | "volunteer.generate"
+  | "volunteer.review"
+  | "volunteer.reassign"
+  | "volunteer.my_assignment"
+  | "volunteer.my_volunteer"
   // admin (Phase 3)
   | "import.manage"
   | "user.read"
@@ -30,15 +41,19 @@ export const AUTHENTICATED: ReadonlySet<Permission> = new Set(["registration.sub
 
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   // FR-IAM-06: Admin holds NO management permissions unless also granted the `management` role.
-  admin: ["import.manage", "user.read", "user.manage", "role.assign", "activation.issue"],
+  // RQ §9: the Admin initiates or oversees volunteer assignment; saving (review) and reassignment are Management's.
+  admin: ["import.manage", "user.read", "user.manage", "role.assign", "activation.issue", "volunteer.read", "volunteer.generate"],
   management: [
     "application.read_all", "decision.draft", "decision.release", "selection_limit.configure",
     "criteria.manage", "ranking.run", "ranking.read", "decision.correct",
+    "jury.manage", "jury.review",
+    "volunteer.read", "volunteer.generate", "volunteer.review", "volunteer.reassign",
   ],
-  startup_team_leader: [],
+  // Participant permissions are further limited to the caller's own startup, assignments and edition on the server.
+  startup_team_leader: ["volunteer.my_volunteer"],
   startup_team_member: [],
-  jury_member: [],
-  volunteer: [],
+  jury_member: ["jury.evaluate", "volunteer.my_volunteer"],
+  volunteer: ["volunteer.my_assignment"],
   delegate: [],
   customer_support: [],
 };

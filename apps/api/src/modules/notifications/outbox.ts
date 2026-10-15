@@ -18,6 +18,10 @@ export const TEMPLATES = {
   correction: {
     sms: (v: { year: number; url: string }) => `Startup Jathara ${v.year}: the decision on your application has been updated. Sign in at ${v.url} to see it.`,
   },
+  /** Phase 6 (FR-VOL-08). No contact details in the message itself: the app shows them to the authorised person. */
+  assignment: {
+    sms: (v: { year: number; url: string }) => `Startup Jathara ${v.year}: your volunteer assignment has changed. Open the app or ${v.url} to see the details.`,
+  },
   activation: {
     subject: "Your Startup Jathara activation code",
     email: (v: { code: string; hours: number }) =>
@@ -27,10 +31,14 @@ export const TEMPLATES = {
   },
 } as const;
 
+/** Phase 6 volunteer messages (FR-VOL-08). One DLT template covers them all: MSG91_TEMPLATE_ASSIGNMENT. */
+export const VOLUNTEER_MESSAGE_KINDS = ["volunteer_assigned", "volunteer_for_you", "volunteer_assignment_ended", "volunteer_removed"] as const;
+export type VolunteerMessageKind = (typeof VOLUNTEER_MESSAGE_KINDS)[number];
+
 export type OutboxMessage = {
   userId: string;
   editionId: number | null;
-  kind: "selection_result" | "decision_corrected" | "activation";
+  kind: "selection_result" | "decision_corrected" | "activation" | VolunteerMessageKind;
   /** The account's contact on file. Email wins when present (TBD-13, TBD-14). */
   email: string | null;
   mobile: string | null;

@@ -39,10 +39,10 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-17 | No extra team-management permissions for 2026. | Default — awaiting Management |
 | TBD-18 | A written reason is **required for every override** of the AI ranking. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-19 | **Warn and require explicit confirmation.** A release above the limit is refused unless the manager confirms it, and the confirmation is audited. No hard block. | Default — awaiting Management · **built** |
-| TBD-20 | Management assigns explicitly which startups pitch and the slots. Jurors see only their own scores. | Default — awaiting Management |
-| TBD-21 | Management Team members operate "currently pitching". One named operator per venue session on the run sheet. | Default — awaiting Management |
-| TBD-22 | Pool: every startup with 2026 access plus every jury member. **No priority**: random, with the unassigned listed. | Default — awaiting Management |
-| TBD-23 | Close the assignment with a reason, then reassign manually from free volunteers. No automatic reshuffle. | Default — awaiting Management |
+| TBD-20 | Management assigns explicitly which startups pitch and the slots. Jurors see only their own scores. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-21 | Management Team members operate "currently pitching". One named operator per venue session on the run sheet. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-22 | Pool: every startup with 2026 access plus every jury member. **No priority**: random, with the unassigned listed. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-23 | Close the assignment with a reason, then reassign manually from free volunteers. No automatic reshuffle. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-24 | Admin: documents, emergency contacts, safety guidelines, static pages. Management: schedule, venues, meals, accommodation, travel, notices. | Default — awaiting Organisers |
 | TBD-25 | The website links to the WhatsApp Help Desk (click-to-chat) and the app. **No separate web chat.** | Default — awaiting Organisers |
 | TBD-26 | English only for 2026. All text is externalised so other languages can be added later. | Default — awaiting Organisers |
@@ -62,12 +62,16 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-40 | Release 2026 decisions **on or before 20 Nov 2026**. | Default — awaiting Management |
 | TBD-41 | CSV (UTF-8), one file per category, column set v1 as built. No XLSX. Organisers sign off a real sample file. | Default — awaiting Organisers |
 | TBD-42 | Rank 2027 applications once, after the 2027 deadline closes. | Default — awaiting Management · **built (Phase 5)** |
-| TBD-43 | Draft rubric: the approved TBD-01 criteria plus "pitch delivery", integer 1–10, equal weights. No automatic winners. | Default — awaiting Management |
+| TBD-43 | Draft rubric: the approved TBD-01 criteria plus "pitch delivery", integer 1–10, equal weights. No automatic winners. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-44 | **Never shared** with applicants. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-45 | **18+ only.** Applicants confirm they are 18 or older at registration; no date of birth is collected. | Default — awaiting Organisers + Legal · **built** |
 | TBD-46 | India regions: Supabase ap-south-1 (Pro plan), Cloud Run asia-south1, Vercel Pro (bom1). Indicative budget below. | Default — awaiting **Budget** |
+| TBD-47 | Volunteer runs: Admin **or** Management generates a draft; only Management saves it, reassigns, assigns by hand or ends an assignment. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-48 | Volunteer-assignment messages: in-app plus one email/SMS through the existing outbox, to both the volunteer and the target. Wording is draft. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-49 | Contact shown between a volunteer and their target: name and mobile number only, never email. | Default — awaiting Management + Legal · **built (Phase 6)** |
+| TBD-50 | Rubric changes after scoring starts: submitted evaluations keep their version; drafts and reopened evaluations are scored against the latest approved version. | Default — awaiting Management · **built (Phase 6)** |
 | OD-01 | WhatsApp verification uses a link code shown in the signed-in app. | **Decided** |
-| OD-02 | iOS reinstall: sign out on the first launch after any reinstall. Built in Phase 6 before store submission. | **Decided** |
+| OD-02 | iOS reinstall: sign out on the first launch after any reinstall. To build before store submission (not part of the Phase 6 jury/volunteer delivery). | **Decided** · not built yet |
 | OD-03 | Maps: static map links inside venue content. No maps SDK or API. | **Decided** |
 | OD-04 | Repository visibility: **private** until launch approval. | Default — awaiting repo owner |
 | OD-05 | Descope order (EXECUTION_PLAN §8) as pre-approved contingency with dated checkpoints. | Default — awaiting Organisers |
@@ -238,7 +242,8 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - optional comments.
 
   Winners are **never** declared automatically (RQ §8).
-- **Approval:** Management. **Status:** Default — awaiting Management. Built in Phase 6.
+- **Approval:** Management. **Status:** Default — awaiting Management.
+- **Built (Phase 6):** migration 0010 seeds this rubric as an **unapproved** draft v1 for 2026 and 2027; jurors cannot score until Management approves a version (`409 no_rubric`). Versions are created and approved on the console's Jury page; an approved version is frozen by a DB trigger. Weights are **relative** (a parameter counts weight ÷ sum of weights); the server computes a 0–100 total, normalised per parameter range. Each evaluation records the rubric version it used, and Management summaries never mix versions. Comments can be switched off per version. Tests: `apps/api/test/jury.test.ts`.
 
 ### TBD-20 · Which startups pitch, slots, and visibility of other jurors' scores
 - **Decision:**
@@ -247,10 +252,13 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - A juror sees only their own scores; Management sees all of them.
 - **Why:** RQ §8 does not state a pitching rule. RQ §11.3 forbids disclosing scores to other participants, and hiding peers' scores keeps evaluations independent.
 - **Approval:** Management. **Status:** Default — awaiting Management.
+- **Built (Phase 6):** Management assigns jurors to startups one by one (API and a DB trigger check that both take part in the edition). A juror can open only an assigned startup, plus the startup Management marks as currently pitching (FR-JRY-03); any other profile is a 404. The profile has founders' names and the edition's application answers, with **no contact details and no AI data**. Scoring is limited to assigned startups. A juror's views carry only their own scores. Management reviews submitted evaluations and can **reopen** one with a written reason (audited with the previous submission); nothing else changes a submitted evaluation, which a DB trigger enforces.
+- **Separation from AI ranking and selection (Phase 6):** no ranking, selection or release code reads jury tables, the ranking worker role has no grant on them, and tests show that scoring changes no application, decision or ranking row.
 
 ### TBD-21 · Who operates "currently pitching"
 - **Decision:** Management Team members, through a permission held by the Management role. The run sheet names one operator per venue session, and every change is audited. One live pitch per edition is already enforced in the DB.
 - **Approval:** Management (names). **Status:** Default — awaiting Management.
+- **Built (Phase 6):** permission `jury.manage` (Management only). Starting a pitch finishes any other live pitch of the edition in the same transaction; start and finish are audited.
 
 ## C. Volunteers, content and notices
 
@@ -264,10 +272,33 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - **Priority:** none. Assignment is random, as RQ §9 states, and every unassigned target is listed for Management to fill by hand.
 - **Why:** A priority rule would contradict RQ §9's random assignment and is not stated anywhere.
 - **Approval:** Management. **Status:** Default — awaiting Management.
+- **Built (Phase 6):** a startup is in the pool when its leader has 2026 event access; a jury member when they hold the role for the edition, have its access and are not deactivated. Generation shuffles volunteers and targets with a seeded, unbiased shuffle (HMAC-SHA256 stream, Fisher–Yates with rejection sampling) and pairs them one-to-one. The seed and the sorted inputs are stored with the run, so it can be reproduced. A person is never paired with themselves. Shortages are listed as unassigned targets and surpluses as unassigned volunteers. A run is a **draft** that participants cannot see until Management saves it. Tests: `apps/api/test/volunteers.test.ts`.
 
 ### TBD-23 · Volunteers who become unavailable
 - **Decision:** An authorised user closes the assignment with a reason, and the history is kept (DC-07). They then either assign a free volunteer by hand or leave the target listed as unassigned. Other pairs are never reshuffled automatically, and both sides are notified.
 - **Approval:** Management. **Status:** Default — awaiting Management.
+- **Built (Phase 6):** "End" closes an assignment with a reason; "Reassign" closes it and creates a new row that points to it (`replaces_id`), recording the previous and new assignment, the actor, the time and the reason (row and audit event). Closed rows cannot be changed or deleted (DB trigger). Manual assignment needs a reason and a free volunteer and target.
+
+### TBD-47 · Who generates, saves and changes volunteer assignments
+- **Decision:** Admin **or** Management generates a draft run (RQ §9 says the Admin initiates; the Phase 6 brief asks for Management). Only Management saves a draft, assigns by hand, reassigns or ends an assignment. Admin can view and discard drafts.
+- **Why:** The PRD matrix marks reassignment "C" for both roles without saying which one acts. Keeping changes with Management gives one accountable role for the live pairs.
+- **Trade-off:** If Admin should also reassign, it is a permission change (`volunteer.reassign`), not new code.
+- **Approval:** Management. **Status:** Default — awaiting Management. **Built (Phase 6).**
+
+### TBD-48 · Volunteer-assignment message channels and wording
+- **Decision:** When a run is saved, or an assignment is made, changed or ended, both the volunteer and the target (the startup's leader, or the jury member) get an in-app notice plus one email, or SMS when they have no email, through the existing outbox. The SMS uses a new DLT template (`MSG91_TEMPLATE_ASSIGNMENT`) carrying only the year and a link. Delivery status is shown per message exactly as recorded: without a provider it stays **queued**.
+- **Approval:** Management (wording); the DLT template needs registration. **Status:** Default — awaiting Management. The wording in `apps/api/src/modules/volunteers/service.ts` is a draft.
+
+### TBD-49 · Contact details shared between a volunteer and their target
+- **Decision:** A volunteer sees the target's name and the coordinating person's name and mobile number (the startup leader's, or the jury member's). The target sees the volunteer's name and mobile number. Email addresses are never shown. Only saved (active) assignments are visible.
+- **Why:** Coordination at the event needs a phone number; nothing in the requirements says which fields to share, so the minimum is used.
+- **Approval:** Management, and Legal as part of the privacy notice (TBD-32). **Status:** Default — awaiting Management + Legal. **Built (Phase 6).**
+
+### TBD-50 · Changing the jury rubric after scoring has started
+- **Decision:** Allowed, as a new version. Submitted evaluations keep the version they used. Draft and reopened evaluations are validated and totalled against the **latest approved** version when next saved. Summaries are per version and never mixed.
+- **Why:** Requirements do not say whether the rubric may change mid-event. This keeps every submitted score tied to the rules it was given under.
+- **Trade-off:** If Management wants the rubric locked once the first score is submitted, that is one extra check in `createRubric`.
+- **Approval:** Management. **Status:** Default — awaiting Management. **Built (Phase 6).**
 
 ### TBD-04 · Delegate requirements
 - **Decision:** For 2026, delegates get **information only**: programme, venues, food, accommodation and travel details as published content. There is no room-allocation, travel-booking or check-in module.
@@ -518,7 +549,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - A reinstall should not silently restore a session; the device may have changed hands.
   - The behaviour becomes the same on Android and iOS.
   - Signing in again takes seconds.
-- **Status:** **Decided** (security). Built in Phase 6, before store submission. D8 must then show "signed out" on both platforms.
+- **Status:** **Decided** (security). **Not built yet.** It was listed under Phase 6, but the Phase 6 delivery covered jury and volunteers only. It must be built before store submission (Phase 10), and D8 must then show "signed out" on both platforms.
 
 ### OD-03 · Maps and venue navigation (PRD §8, was "TBD (not in RQ)")
 - **Decision:** Static map links inside venue content. No maps SDK or API key.
@@ -550,6 +581,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-45 | `adultDeclaration` (must be `true`) in `RegistrationRequest`, in the website and app forms, and recorded in the `registration.submitted` audit event. |
 | All | Code comments, console text and docs now cite this register instead of "not decided". |
 | Phase 5 (15 Oct 2026) | Migrations `0008_ranking_selection.sql` and `0009_ranking_worker_set_role.sql`, and the ranking, outbox and correction modules build TBD-01, -13, -14, -18, -37, -42 and -44 and the TBD-35 adapters. See [PHASES.md](PHASES.md) for details. |
+| Phase 6 (15 Oct 2026) | Migration `0010_jury_volunteers.sql` and the `jury` and `volunteers` modules build TBD-20, -21, -22, -23 and -43. New defaults TBD-47…50 record the choices the requirements leave open. See [PHASES.md](PHASES.md). |
 
 Sources for vendor and legal facts (checked 15 Oct 2026):
 - [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp)

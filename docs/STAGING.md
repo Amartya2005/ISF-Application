@@ -7,7 +7,7 @@
 | API URL | `https://chiafggvergjwliqvlwv.supabase.co` |
 | Publishable key (public) | `sb_publishable_g70WFso8X3RevFDQhNAxxw_aGhcSxk_`. Safe to ship in web and app builds; it grants no table access (see below). |
 | JWT signing | Asymmetric **ES256** key published at `/auth/v1/.well-known/jwks.json`, as the API's verifier requires |
-| Database schema | Migrations 0001–0009 applied and recorded in `schema_migrations` with the same checksums as `db/migrations`, so `pnpm db:migrate` sees staging as up to date |
+| Database schema | Migrations 0001–0010 applied and recorded in `schema_migrations` with the same checksums as `db/migrations`, so `pnpm db:migrate` sees staging as up to date. 0010 (Phase 6) was applied on 15 Oct 2026 in one transaction with its checksum row; afterwards 2 unapproved draft rubrics, the 7 new triggers and 3 new indexes were present, `sj_ranking_worker`, `anon` and `authenticated` had no privilege on the jury and volunteer tables, and every table still had RLS on |
 | Data API | Closed. All 32 tables have row-level security on with no policies, and `anon`/`authenticated` hold no privileges (checked in SQL on 15 Oct 2026; Supabase security advisor shows only the expected "RLS enabled, no policy" notes) |
 
 Also in the ISF organisation: "Amartya2005's Project" (Sydney, ap-southeast-2) was created automatically, is empty, and is **paused** to free the free-plan project slot. Restore or delete it from the dashboard as you prefer. The personal "n8n" organisation and its project are not used.

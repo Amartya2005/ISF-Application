@@ -27,6 +27,23 @@ import type {
   RegistrationResponse,
   ReleaseResponse,
   SignInIdentifier,
+  EvaluationDetail,
+  EvaluationReview,
+  EvaluationSave,
+  JuryHome,
+  JuryOverview,
+  JuryStartupProfile,
+  MyVolunteer,
+  MyVolunteerAssignment,
+  PitchSlotRequest,
+  PitchSlotUpdate,
+  ReassignRequest,
+  Rubric,
+  RubricCreate,
+  VolunteerAssignmentItem,
+  VolunteerOverview,
+  VolunteerRun,
+  VolunteerTargetRef,
 } from "@sj/contracts";
 
 export class ApiError extends Error {
@@ -121,6 +138,44 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
       approveCorrection: (id: string, note?: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/approve`, note ? { note } : {}),
       rejectCorrection: (id: string, note?: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/reject`, note ? { note } : {}),
       cancelCorrection: (id: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/cancel`),
+      // Jury evaluation (Phase 6). Decision support only: separate from AI ranking and selection decisions.
+      jury: (year: number) => req<JuryOverview>("GET", `/v1/manage/editions/${year}/jury`),
+      createRubric: (year: number, body: RubricCreate) => req<Rubric>("POST", `/v1/manage/editions/${year}/rubrics`, body),
+      approveRubric: (id: string) => req<Rubric>("POST", `/v1/manage/rubrics/${id}/approve`),
+      assignJury: (year: number, juryUserId: string, startupId: string) =>
+        req<JuryOverview>("POST", `/v1/manage/editions/${year}/jury-assignments`, { juryUserId, startupId }),
+      unassignJury: (id: string) => req<JuryOverview>("DELETE", `/v1/manage/jury-assignments/${id}`),
+      createSlot: (year: number, body: PitchSlotRequest) => req<JuryOverview>("POST", `/v1/manage/editions/${year}/pitch-slots`, body),
+      updateSlot: (id: string, body: PitchSlotUpdate) => req<JuryOverview>("PUT", `/v1/manage/pitch-slots/${id}`, body),
+      deleteSlot: (id: string) => req<JuryOverview>("DELETE", `/v1/manage/pitch-slots/${id}`),
+      startPitch: (id: string) => req<JuryOverview>("POST", `/v1/manage/pitch-slots/${id}/start`),
+      finishPitch: (id: string) => req<JuryOverview>("POST", `/v1/manage/pitch-slots/${id}/finish`),
+      evaluations: (year: number) => req<EvaluationReview>("GET", `/v1/manage/editions/${year}/evaluations`),
+      reopenEvaluation: (id: string, reason: string) => req<EvaluationDetail>("POST", `/v1/manage/evaluations/${id}/reopen`, { reason }),
+      // Volunteer assignment (Phase 6)
+      volunteers: (year: number) => req<VolunteerOverview>("GET", `/v1/manage/editions/${year}/volunteers`),
+      generateVolunteerRun: (year: number) => req<VolunteerRun>("POST", `/v1/manage/editions/${year}/volunteer-runs`),
+      volunteerRun: (id: string) => req<VolunteerRun>("GET", `/v1/manage/volunteer-runs/${id}`),
+      approveVolunteerRun: (id: string) => req<VolunteerRun>("POST", `/v1/manage/volunteer-runs/${id}/approve`),
+      discardVolunteerRun: (id: string) => req<VolunteerRun>("POST", `/v1/manage/volunteer-runs/${id}/discard`),
+      assignVolunteer: (year: number, volunteerUserId: string, target: VolunteerTargetRef, reason: string) =>
+        req<VolunteerAssignmentItem>("POST", `/v1/manage/editions/${year}/volunteer-assignments`, { volunteerUserId, target, reason }),
+      reassignVolunteer: (id: string, body: ReassignRequest) => req<VolunteerAssignmentItem>("POST", `/v1/manage/volunteer-assignments/${id}/reassign`, body),
+      closeVolunteerAssignment: (id: string, reason: string) =>
+        req<VolunteerAssignmentItem>("POST", `/v1/manage/volunteer-assignments/${id}/close`, { reason }),
+    },
+    /** Jury members: their own assignments, the current pitch, and their own scores. */
+    jury: {
+      home: (year: number) => req<JuryHome>("GET", `/v1/editions/${year}/jury`),
+      startup: (year: number, startupId: string) => req<JuryStartupProfile>("GET", `/v1/editions/${year}/jury/startups/${startupId}`),
+      saveDraft: (year: number, startupId: string, body: EvaluationSave) =>
+        req<JuryHome>("PUT", `/v1/editions/${year}/jury/startups/${startupId}/evaluation`, body),
+      submit: (year: number, startupId: string, body: EvaluationSave) =>
+        req<JuryHome>("POST", `/v1/editions/${year}/jury/startups/${startupId}/evaluation/submit`, body),
+    },
+    volunteer: {
+      myAssignment: (year: number) => req<MyVolunteerAssignment>("GET", `/v1/editions/${year}/volunteer/assignment`),
+      myVolunteer: (year: number) => req<MyVolunteer>("GET", `/v1/editions/${year}/me/volunteer`),
     },
   };
 }

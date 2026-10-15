@@ -108,3 +108,9 @@ ul.plain { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8
 .status-active, .status-created, .status-linked, .status-valid { color: var(--accent); }
 input[type="file"] { font: inherit; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }
+
+/* Phase 6: jury and volunteer pages */
+.check { display: flex; gap: 8px; align-items: center; }
+.check input { width: auto; }
+.stack { display: grid; gap: 6px; min-width: 220px; }
+ul.plain { list-style: none; padding: 0; margin: 0; }

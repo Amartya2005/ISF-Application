@@ -25,7 +25,7 @@ The keychain session store is unit-tested (`apps/mobile/lib/chunked-store.test.t
 | D11 | Staff MFA on a phone browser: open the **console** in Safari (iOS) and Chrome (Android), sign in as staff, then enrol and verify an authenticator code. | Privileged sections appear only after verifying. Signing out and back in asks for the code again. |
 | D12 | Revoke the account's role in the console while the app is open, then refresh the app. | Role-based content disappears on the next request. |
 
-**Note on D8 (iOS keychain persistence).** Decision OD-02 ([docs/DECISIONS.md](/docs/DECISIONS.md)): a reinstall always signs the person out. The app keeps a marker in app storage, which iOS deletes on uninstall, and clears the keychain session when the marker is missing. This is **not built yet**; it is scheduled for Phase 6, before store submission. Until then, D8 on iOS is expected to fail.
+**Note on D8 (iOS keychain persistence).** Decision OD-02 ([docs/DECISIONS.md](/docs/DECISIONS.md)): a reinstall always signs the person out. The app keeps a marker in app storage, which iOS deletes on uninstall, and clears the keychain session when the marker is missing. This is **not built yet** (it was not part of the Phase 6 jury and volunteer delivery) and must be built before store submission. Until then, D8 on iOS is expected to fail.
 
 ## Results
 

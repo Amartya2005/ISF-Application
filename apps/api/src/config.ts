@@ -49,6 +49,7 @@ const Env = z.object({
   MSG91_TEMPLATE_RESULT: z.string().optional(),
   MSG91_TEMPLATE_CORRECTION: z.string().optional(),
   MSG91_TEMPLATE_ACTIVATION: z.string().optional(),
+  MSG91_TEMPLATE_ASSIGNMENT: z.string().optional(),
 });
 
 export type Config = {
@@ -160,7 +161,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
     sms: {
       provider: e.NOTIFY_SMS_PROVIDER,
       msg91: e.NOTIFY_SMS_PROVIDER === "msg91"
-        ? { authKey: e.MSG91_AUTH_KEY!, templates: { selection_result: e.MSG91_TEMPLATE_RESULT, decision_corrected: e.MSG91_TEMPLATE_CORRECTION, activation: e.MSG91_TEMPLATE_ACTIVATION } }
+        ? { authKey: e.MSG91_AUTH_KEY!, templates: {
+            selection_result: e.MSG91_TEMPLATE_RESULT, decision_corrected: e.MSG91_TEMPLATE_CORRECTION, activation: e.MSG91_TEMPLATE_ACTIVATION,
+            volunteer_assigned: e.MSG91_TEMPLATE_ASSIGNMENT, volunteer_for_you: e.MSG91_TEMPLATE_ASSIGNMENT,
+            volunteer_assignment_ended: e.MSG91_TEMPLATE_ASSIGNMENT, volunteer_removed: e.MSG91_TEMPLATE_ASSIGNMENT,
+          } }
         : undefined,
     },
   };

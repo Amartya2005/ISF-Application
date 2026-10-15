@@ -68,7 +68,8 @@ Every TBD now has a recommended decision, and the code follows it. **None has be
 - [ ] **Organisers:** activation delivery and 72 h validity (TBD-13); import column set v1 signed off on a real sample (TBD-41); team-member onboarding after selection (TBD-16); delegate scope and no QR/allocation modules (TBD-04, TBD-30); content ownership (TBD-24); Help Desk on the website as a WhatsApp link (TBD-25); English only (TBD-26); export permissions (TBD-31); descope checkpoints (OD-05).
 - [ ] **Organisers, before Phase 8:** emergency contacts (TBD-07), escalation windows (TBD-27), support roster (TBD-28).
 - [ ] **Management, before results are released (by 20 Nov, TBD-40):** criteria set approved by 6 Nov (TBD-01); result channels and wording (TBD-14); override reasons (TBD-18); correction and withdrawal policy (TBD-37), with the correction process built; scores never shared (TBD-44).
-- [ ] **Management, later phases:** TBD-05, TBD-10, TBD-17, TBD-20, TBD-21, TBD-22, TBD-23, TBD-29, TBD-42, TBD-43.
+- [ ] **Management, later phases:** TBD-05, TBD-10, TBD-17, TBD-29, TBD-42.
+- [ ] **Management, before the event (jury and volunteers, built in Phase 6):** approve a jury rubric version in the console (TBD-43; jurors cannot score until then) and the rubric-change rule (TBD-50); pitch assignment and the "currently pitching" operators (TBD-20, TBD-21); volunteer pool, roles and reassignment rules (TBD-22, TBD-23, TBD-47); assignment message wording and a registered DLT template for `MSG91_TEMPLATE_ASSIGNMENT` (TBD-48); the contact fields shared between volunteers and targets, also for the privacy notice (TBD-49, with Legal).
 - [ ] **Budget:** hosting and budget ceiling (TBD-46), PITR windows and service targets (TBD-33), vendor contracts and DPAs (TBD-35).
 
 ## D. Security and operations

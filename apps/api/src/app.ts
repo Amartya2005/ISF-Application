@@ -6,6 +6,8 @@ import {
   ACCOUNT_STATUSES, ActivationRequest, CorrectionReviewRequest, CriteriaSetCreate, CutLineRequest, DecisionCorrectionRequest, DecisionRequest,
   DevSessionRequest, normaliseMobile, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
   RegistrationRequest, ReleaseRequest, ROLES, RoleGrantRequest, SelectionLimitRequest, StartRankingRunRequest,
+  CloseAssignmentRequest, EvaluationSave, JuryAssignmentRequest, ManualAssignRequest, PitchSlotRequest, PitchSlotUpdate, ReassignRequest,
+  ReopenRequest, RubricCreate,
 } from "@sj/contracts";
 import { z } from "zod";
 import type { Config } from "./config.js";
@@ -20,6 +22,14 @@ import {
   approveCorrection, cancelCorrection, draftDecision, getApplication, listApplications, listCorrections, rejectCorrection, releaseDecisions,
   requestCorrection, setSelectionLimit, withdrawDraft,
 } from "./modules/selection/service.js";
+import {
+  approveRubric, assignJury, createRubric, createSlot, deleteSlot, finishPitch, juryHome, juryOverview, juryStartupProfile, removeJuryAssignment,
+  reopenEvaluation, reviewEvaluations, saveEvaluation, startPitch, updateSlot,
+} from "./modules/jury/service.js";
+import {
+  approveRun, assignManually, closeAssignment, discardRun, generateRun, getRun as getVolunteerRun, myAssignment, myVolunteer, reassign,
+  volunteerOverview,
+} from "./modules/volunteers/service.js";
 import { automatedChannels, rankingModelFrom } from "./workers.js";
 import { issueDevToken, type IdentityResolver, type TokenVerifier } from "./platform/auth.js";
 import { AppError, parse, registerErrorHandler } from "./platform/errors.js";
@@ -231,6 +241,69 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     getRun(sql, parse(Id, req.params).id));
   app.put("/v1/manage/ranking-runs/:id/cut-line", { preHandler: [auth, requirePermission("ranking.run")] }, async (req) =>
     setCutLine(sql, principalOf(req), parse(Id, req.params).id, parse(CutLineRequest, req.body).cutLine));
+
+  // ---------------------------------------------------------------- jury evaluation, Management (Phase 6, FR-JRY-*)
+  // Jury scoring is decision support for the event only; nothing here reads or writes ranking or selection data.
+  const jm = { preHandler: [auth, requirePermission("jury.manage")] };
+  const jr = { preHandler: [auth, requirePermission("jury.review")] };
+  app.get("/v1/manage/editions/:year/jury", jm, async (req) => juryOverview(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/rubrics", jm, async (req, reply) =>
+    reply.status(201).send(await createRubric(sql, principalOf(req), parse(Year, req.params).year, parse(RubricCreate, req.body))));
+  app.post("/v1/manage/rubrics/:id/approve", jm, async (req) => approveRubric(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/editions/:year/jury-assignments", jm, async (req, reply) =>
+    reply.status(201).send(await assignJury(sql, principalOf(req), parse(Year, req.params).year, parse(JuryAssignmentRequest, req.body))));
+  app.delete("/v1/manage/jury-assignments/:id", jm, async (req) => removeJuryAssignment(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/editions/:year/pitch-slots", jm, async (req, reply) =>
+    reply.status(201).send(await createSlot(sql, principalOf(req), parse(Year, req.params).year, parse(PitchSlotRequest, req.body))));
+  app.put("/v1/manage/pitch-slots/:id", jm, async (req) => updateSlot(sql, principalOf(req), parse(Id, req.params).id, parse(PitchSlotUpdate, req.body)));
+  app.delete("/v1/manage/pitch-slots/:id", jm, async (req) => deleteSlot(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/pitch-slots/:id/start", jm, async (req) => startPitch(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/pitch-slots/:id/finish", jm, async (req) => finishPitch(sql, principalOf(req), parse(Id, req.params).id));
+  app.get("/v1/manage/editions/:year/evaluations", jr, async (req) => reviewEvaluations(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/evaluations/:id/reopen", jr, async (req) =>
+    reopenEvaluation(sql, principalOf(req), parse(Id, req.params).id, parse(ReopenRequest, req.body).reason));
+
+  // ---------------------------------------------------------------- jury evaluation, jurors (own assignments only)
+  const juror = { preHandler: [auth, requireEditionAccess(), requirePermission("jury.evaluate")] };
+  const StartupParam = z.object({ year: z.coerce.number().int().min(2026).max(2100), startupId: z.string().uuid() });
+  app.get("/v1/editions/:year/jury", juror, async (req) => juryHome(sql, principalOf(req), parse(Year, req.params).year));
+  app.get("/v1/editions/:year/jury/startups/:startupId", juror, async (req) => {
+    const { year, startupId } = parse(StartupParam, req.params);
+    return juryStartupProfile(sql, principalOf(req), year, startupId);
+  });
+  app.put("/v1/editions/:year/jury/startups/:startupId/evaluation", juror, async (req) => {
+    const { year, startupId } = parse(StartupParam, req.params);
+    return saveEvaluation(sql, principalOf(req), year, startupId, parse(EvaluationSave, req.body), false);
+  });
+  app.post("/v1/editions/:year/jury/startups/:startupId/evaluation/submit", juror, async (req) => {
+    const { year, startupId } = parse(StartupParam, req.params);
+    return saveEvaluation(sql, principalOf(req), year, startupId, parse(EvaluationSave, req.body), true);
+  });
+
+  // ---------------------------------------------------------------- volunteer assignment (Phase 6, FR-VOL-*)
+  const vRead = { preHandler: [auth, requirePermission("volunteer.read")] };
+  const vGen = { preHandler: [auth, requirePermission("volunteer.generate")] };
+  const vReview = { preHandler: [auth, requirePermission("volunteer.review")] };
+  const vChange = { preHandler: [auth, requirePermission("volunteer.reassign")] };
+  const delivery = () => ({ now: now(), webUrl });
+  app.get("/v1/manage/editions/:year/volunteers", vRead, async (req) => volunteerOverview(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/volunteer-runs", vGen, async (req, reply) =>
+    reply.status(201).send(await generateRun(sql, principalOf(req), parse(Year, req.params).year)));
+  app.get("/v1/manage/volunteer-runs/:id", vRead, async (req) => getVolunteerRun(sql, parse(Id, req.params).id));
+  app.post("/v1/manage/volunteer-runs/:id/approve", vReview, async (req) => approveRun(sql, principalOf(req), parse(Id, req.params).id, delivery()));
+  app.post("/v1/manage/volunteer-runs/:id/discard", vGen, async (req) => discardRun(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/editions/:year/volunteer-assignments", vChange, async (req, reply) =>
+    reply.status(201).send(await assignManually(sql, principalOf(req), parse(Year, req.params).year, parse(ManualAssignRequest, req.body), delivery())));
+  app.post("/v1/manage/volunteer-assignments/:id/reassign", vChange, async (req) =>
+    reassign(sql, principalOf(req), parse(Id, req.params).id, parse(ReassignRequest, req.body), delivery()));
+  app.post("/v1/manage/volunteer-assignments/:id/close", vChange, async (req) =>
+    closeAssignment(sql, principalOf(req), parse(Id, req.params).id, parse(CloseAssignmentRequest, req.body).reason, delivery()));
+
+  // Participants: their own active assignment / volunteer only, for an edition they take part in.
+  app.get("/v1/editions/:year/volunteer/assignment", { preHandler: [auth, requireEditionAccess(), requirePermission("volunteer.my_assignment")] },
+    async (req) => myAssignment(sql, principalOf(req), parse(Year, req.params).year));
+  app.get("/v1/editions/:year/me/volunteer", { preHandler: [auth, requireEditionAccess(), requirePermission("volunteer.my_volunteer")] },
+    async (req) => myVolunteer(sql, principalOf(req), parse(Year, req.params).year));
 
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {

@@ -58,6 +58,13 @@ export default function Home() {
             {e?.eventStartsOn && e.eventEndsOn ? <P>{formatDateRange(e.eventStartsOn, e.eventEndsOn)} · GIET University, Gunupur</P> : <P muted>Dates to be announced.</P>}
             {apps.startup && <P>Startup: <Text style={{ fontWeight: "700" }}>{apps.startup.name}</Text></P>}
             <P muted small>The schedule, venues, food and accommodation details, notices and the Help Desk will appear here as the event team publishes them.</P>
+            {me.permissions.includes("jury.evaluate") && (
+              <Button title={`Jury: score your startups (${year})`} onPress={() => router.push({ pathname: "/jury", params: { year: String(year) } })} />
+            )}
+            {(me.permissions.includes("volunteer.my_assignment") || me.permissions.includes("volunteer.my_volunteer")) && (
+              <Button title={me.permissions.includes("volunteer.my_assignment") ? "My volunteer assignment" : "My volunteer"} kind="secondary"
+                onPress={() => router.push({ pathname: "/volunteer", params: { year: String(year) } })} />
+            )}
           </Card>
         );
       })}

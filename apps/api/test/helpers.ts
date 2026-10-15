@@ -84,6 +84,27 @@ export async function createTestApp(
       for (const r of roles) await db.sql`insert into role_grants (user_id, role) values (${u!.id}, ${r})`;
       return u!.id;
     },
+    /**
+     * An imported participant (as a Phase 3 import leaves them, but already activated and linked): an active account
+     * with an edition-scoped role and access to that edition.
+     */
+    async participant(email: string, role: Role, edition = 2026, o: { mobile?: string; name?: string } = {}): Promise<string> {
+      const [u] = await db.sql<{ id: string }[]>`
+        insert into user_accounts (auth_subject, email, full_name, mobile_e164)
+        values (${`dev|${email}`}, ${email}, ${o.name ?? email}, ${o.mobile ?? null}) returning id`;
+      await db.sql`insert into role_grants (user_id, role, edition_id) values (${u!.id}, ${role}, ${edition})`;
+      await db.sql`insert into edition_access (user_id, edition_id, source) values (${u!.id}, ${edition}, 'predefined')`;
+      return u!.id;
+    },
+    /** A predefined startup taking part in an edition, led by a participant with that edition's access. */
+    async startup(name: string, leaderEmail: string, edition = 2026, o: { mobile?: string; description?: string } = {}): Promise<{ id: string; leaderId: string }> {
+      const leaderId = await t.participant(leaderEmail, "startup_team_leader", edition, { mobile: o.mobile, name: `${name} Leader` });
+      const [s] = await db.sql<{ id: string }[]>`
+        insert into startups (name, description, website, city, state, origin) values (${name}, ${o.description ?? `${name} makes things.`},
+          'https://example.test', 'Gunupur', 'Odisha', 'predefined') returning id`;
+      await db.sql`insert into startup_memberships (startup_id, user_id, position) values (${s!.id}, ${leaderId}, 'leader')`;
+      return { id: s!.id, leaderId };
+    },
     async call(method: "GET" | "POST" | "PUT" | "DELETE", url: string, o: CallOpts = {}) {
       const headers: Record<string, string> = {};
       const token = o.token ?? (o.as ? await t.token(o.as, o.aal) : undefined);

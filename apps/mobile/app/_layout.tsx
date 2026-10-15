@@ -20,6 +20,9 @@ export default function RootLayout() {
           <Stack.Screen name="register" options={{ title: "Register a startup" }} />
           <Stack.Screen name="status" options={{ title: "Application status" }} />
           <Stack.Screen name="notifications" options={{ title: "Messages" }} />
+          <Stack.Screen name="jury/index" options={{ title: "Jury" }} />
+          <Stack.Screen name="jury/[startupId]" options={{ title: "Startup" }} />
+          <Stack.Screen name="volunteer" options={{ title: "Volunteer" }} />
         </Stack>
       </SessionProvider>
     </SafeAreaProvider>

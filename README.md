@@ -57,20 +57,25 @@ The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (AD
   - overrides of the ranking need a written reason (TBD-18); released decisions change only through a two-person correction (TBD-37); applicants can withdraw a year's application;
   - result, correction and activation messages by email or SMS through an outbox with per-message status (TBD-13, TBD-14);
   - `pnpm --filter @sj/api ranking:eval` evaluates a model on synthetic applications.
+- **Phase 6, jury evaluation and volunteer assignment** (details in [`docs/PHASES.md`](docs/PHASES.md)):
+  - Management versions and approves the jury rubric (draft v1 ships unapproved, TBD-43), assigns jurors to startups, schedules pitches and marks the startup currently pitching;
+  - jurors (app) see only their assigned startups and the current pitch, without contact details or AI data; they save drafts and submit scores, which are then locked; Management reviews them per rubric version, with no winner, and can reopen one with a reason;
+  - jury scores are kept apart from AI ranking and selection: the ranking worker has no access to jury tables, and scoring changes no application, ranking or decision;
+  - random, reproducible one-to-one volunteer assignment as a draft for Management review; shortages are listed as unassigned targets, never doubled up; reassignment and ending keep a full history (who, when, why); concurrent requests cannot double-assign;
+  - volunteers and targets see each other's name and mobile number in the app (TBD-49) and are told through in-app notices and the email/SMS outbox (TBD-48).
 
 The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
 
-- 292 API tests (integration tests against PostgreSQL, plus unit tests);
-- 4 mobile unit tests;
-- seven browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, and AI ranking through to a two-person correction. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
+- 346 API tests (integration tests against PostgreSQL, plus unit tests);
+- 8 mobile unit tests;
+- eight browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, AI ranking through to a two-person correction, and jury scoring plus volunteer assignment in the console and the app. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
 
 ### Planned / not yet complete
 
 - Production identity configuration (Supabase production).
 - Live provider accounts: Vertex AI for ranking, Amazon SES for email, MSG91 with DLT templates for SMS (TBD-35). The adapters are built and tested against recorded request formats, not yet against live accounts. Until a provider is configured, messages stay queued and activation codes are handed over manually.
 - Organisers' sign-off of import column set v1 on a real sample file (TBD-41).
-- Jury scoring UI and workflow.
-- Random volunteer assignment and reassignment UI.
+- Sign-out on the first app launch after a reinstall (OD-02), required before store submission.
 - Event content, notices and push notifications.
 - Event features in the mobile app (schedule, venues, notices, push notifications, Help Desk), and app-store builds (needs organisation-owned Apple/Google accounts, TBD-36).
 - AI Help Desk, WhatsApp integration, customer-support workflows and emergency escalation.
@@ -255,6 +260,9 @@ pnpm --filter @sj/mobile export:web && python3 scripts/e2e_mobile.py /tmp/startu
 SEED_DEMO_APPLICATIONS=1 pnpm db:seed
 DEV_NOW=2026-11-06T10:00:00+05:30 RANKING_PROVIDER=stub NOTIFY_EMAIL_PROVIDER=log pnpm dev:api
 python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
+# Jury and volunteers (Phase 6): a freshly seeded database (it checks a volunteer shortage), the console and the mobile web build
+pnpm db:seed && pnpm dev:api
+python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
 ```
 
 Model evaluation on synthetic applications (no database, no real data). With the stub it checks the harness only:
@@ -287,7 +295,7 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `RANKING_VERTEX_PROJECT`, `RANKING_VERTEX_LOCATION`, `RANKING_VERTEX_MODEL` | Vertex AI for ranking (location default `asia-south1`; the model is chosen by `ranking:eval`, TBD-35) |
 | `RANKING_VERTEX_SERVICE_ACCOUNT` | A service account used only for ranking, impersonated by the runtime identity (FR-RNK-12) |
 | `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox: `none` (messages stay queued), `log` (development only) or `smtp` (Amazon SES) |
-| `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION` | SMS outbox: `none`, `log` (development only) or `msg91` with DLT-registered template ids |
+| `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION`, `MSG91_TEMPLATE_ASSIGNMENT` (volunteer assignments, TBD-48) | SMS outbox: `none`, `log` (development only) or `msg91` with DLT-registered template ids |
 | `PUBLIC_WEB_URL` | Website address used in result messages |
 | `DEV_NOW` | Development only: pins the API clock (refused in production and outside `AUTH_MODE=dev`) |
 | `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone`. Unset allows both (development). Deployed environments set `email` until the DLT-registered SMS sender is live, then `email,phone` (TBD-12) |

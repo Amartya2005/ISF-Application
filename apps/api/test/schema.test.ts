@@ -63,11 +63,22 @@ describe("DC-02 decisions are made by Management only, and released decisions ar
 });
 
 describe("DC-04/05/06 volunteers are strictly one-to-one", () => {
+  // Since migration 0010 the database also requires real participants: volunteers and jury members of the edition, and
+  // startups whose leader takes part in it. The fixtures say so explicitly; the one-to-one assertions are unchanged.
+  beforeAll(async () => {
+    for (const [u, role] of [[vol1, "volunteer"], [vol2, "volunteer"], [jury, "jury_member"]] as const) {
+      await db.sql`insert into role_grants (user_id, role, edition_id) values (${u}, ${role}, 2026)`;
+    }
+    await db.sql`insert into startup_memberships (startup_id, user_id, position) values (${startupB}, ${plain}, 'leader')`;
+    for (const u of [vol1, vol2, jury, plain]) {
+      await db.sql`insert into edition_access (user_id, edition_id, source) values (${u}, 2026, 'predefined') on conflict do nothing`;
+    }
+  });
   const assign = (volunteer: string, target: { startup?: string; jury?: string }, state = "active") => db.sql`
     insert into volunteer_assignments (edition_id, volunteer_user_id, target_startup_id, target_jury_user_id, state, created_by,
-                                       closed_at)
+                                       closed_at, reason)
     values (2026, ${volunteer}, ${target.startup ?? null}, ${target.jury ?? null}, ${state}, ${manager},
-            ${state === "closed" ? new Date() : null})
+            ${state === "closed" ? new Date() : null}, 'Assigned by hand (test)')
     returning id`;
 
   it("rejects an assignment to both a startup and a jury member, or to neither", async () => {
@@ -84,7 +95,7 @@ describe("DC-04/05/06 volunteers are strictly one-to-one", () => {
   });
 
   it("allows reassignment once the old assignment is closed, keeping history (DC-07)", async () => {
-    await db.sql`update volunteer_assignments set state = 'closed', closed_at = now(), closed_by = ${manager}
+    await db.sql`update volunteer_assignments set state = 'closed', closed_at = now(), closed_by = ${manager}, close_reason = 'Reassigned'
                  where volunteer_user_id = ${vol1} and state = 'active'`;
     await expect(assign(vol1, { startup: startupB })).resolves.toBeTruthy();
     const [n] = await db.sql`select count(*)::int as n from volunteer_assignments where volunteer_user_id = ${vol1}`;

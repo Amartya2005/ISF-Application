@@ -84,8 +84,8 @@ Rules:
 | selection | `GET /manage/editions/{y}/applications` · `GET /manage/applications/{id}` · `PUT\|DELETE /manage/applications/{id}/decision` · `POST /manage/editions/{y}/decisions/release` · `PUT /manage/editions/{y}/selection-limit` · corrections: `GET /manage/editions/{y}/corrections` · `POST /manage/applications/{id}/corrections` · `POST /manage/corrections/{id}/approve\|reject\|cancel` · `POST /me/applications/{id}/withdraw` | M1 ✅ · corrections and withdrawal ✅ Phase 5 |
 | identity/admin | `POST /admin/imports` (preview) · `POST /admin/imports/{id}/commit` · `/admin/users` · `/admin/users/{id}/roles` · `/admin/users/{id}/activation` | M2 |
 | ranking | `GET\|POST /manage/editions/{y}/criteria-sets` · `POST /manage/criteria-sets/{id}/approve` · `GET\|POST /manage/editions/{y}/ranking-runs` · `GET /manage/ranking-runs/{id}` · `PUT /manage/ranking-runs/{id}/cut-line` | M3 ✅ (Phase 5) |
-| jury | `/manage/editions/{y}/jury-assignments` · `/rubrics` · `/pitch/current` · `/editions/{y}/jury/startups` · `PUT\|POST /editions/{y}/jury/evaluations/{id}` · `POST /manage/evaluations/{id}/reopen` | M4 |
-| volunteers | `POST /admin/editions/{y}/volunteer-runs` · `POST /manage/volunteer-runs/{id}/approve` · `POST /manage/volunteer-assignments/{id}/reassign` · `GET /editions/{y}/me/assignment` | M4 |
+| jury | `GET /manage/editions/{y}/jury` · `POST /manage/editions/{y}/rubrics` · `POST /manage/rubrics/{id}/approve` · `POST /manage/editions/{y}/jury-assignments` · `DELETE /manage/jury-assignments/{id}` · `POST /manage/editions/{y}/pitch-slots` · `PUT\|DELETE /manage/pitch-slots/{id}` · `POST /manage/pitch-slots/{id}/start\|finish` · `GET /manage/editions/{y}/evaluations` · `POST /manage/evaluations/{id}/reopen` · jurors: `GET /editions/{y}/jury` · `GET /editions/{y}/jury/startups/{id}` · `PUT /editions/{y}/jury/startups/{id}/evaluation` · `POST …/evaluation/submit` | M4 ✅ (Phase 6) |
+| volunteers | `GET /manage/editions/{y}/volunteers` · `POST /manage/editions/{y}/volunteer-runs` · `GET /manage/volunteer-runs/{id}` · `POST /manage/volunteer-runs/{id}/approve\|discard` · `POST /manage/editions/{y}/volunteer-assignments` · `POST /manage/volunteer-assignments/{id}/reassign\|close` · participants: `GET /editions/{y}/volunteer/assignment` · `GET /editions/{y}/me/volunteer` | M4 ✅ (Phase 6) |
 | content & notices | `GET /public/content` · `GET /editions/{y}/content` · `PUT /admin\|manage/content/{id}` (+publish) · `POST /manage/editions/{y}/notices` · `POST /me/push-tokens` | M5 |
 | help desk & support | `POST /me/helpdesk/messages` · `POST /me/emergency` · `GET\|POST /webhooks/whatsapp` · `/support/tickets…` (assign, status, notes, escalate) | M7 |
 | reports & audit | `GET /manage/reports/{id}` · `GET /admin/audit` · exports | M2–M8 |
@@ -204,9 +204,9 @@ The registration website is never descoped.
 | B-12 | Criteria sets + versioning | TBD-01 | AT-12 | M3 |
 | B-13 | Ranking worker (isolated identity, schema-validated output, flags) | B-12, TBD-35 | AT-11, AT-40 | M3 |
 | B-14 | Ranking review UI + override recording | B-13 | AT-13 | M3 |
-| B-15 | Jury assignments, rubric versions, live pitch control | TBD-20/21/43 | AT-16, AT-18 | M4 |
-| B-16 | Jury scoring (draft/submit/reopen) | B-15 | AT-17 | M4 |
-| B-17 | Volunteer generator (seeded), review, reassignment | TBD-22 | AT-19…23 | M4 |
+| B-15 | Jury assignments, rubric versions, live pitch control | TBD-20/21/43 | AT-16, AT-18 | M4 ✅ |
+| B-16 | Jury scoring (draft/submit/reopen) | B-15 | AT-17 | M4 ✅ |
+| B-17 | Volunteer generator (seeded), review, reassignment | TBD-22 | AT-19…23 | M4 ✅ |
 | B-18 | Content service + publish + documents | TBD-06, TBD-24 | AT-24 | M5 |
 | B-19 | Notices + push tokens + delivery tracking | B-18 | AT-25 | M5 |
 | B-20 | Expo app shell, auth, role home screens | B-06 | AT-01 (mobile) | M6 |
@@ -258,10 +258,17 @@ The 10-phase delivery breakdown and its status are in [PHASES.md](PHASES.md). Ar
   - overrides with reasons, two-person corrections, applicant withdrawal;
   - email/SMS outbox with per-message status and automated activation delivery when a provider is configured;
   - Vertex AI, SMTP and MSG91 adapters (not yet verified against live accounts) and a synthetic-data model evaluation (`ranking:eval`).
+- **Phase 6, jury evaluation and volunteer assignment** (details in [PHASES.md](PHASES.md)):
+  - versioned jury rubrics approved by Management; explicit jury assignments; pitch schedule with one live pitch per edition;
+  - juror scope limited to assigned startups and the current pitch; draft, submit (locked), reopen by Management with a reason;
+  - Management review per rubric version, with no winner; jury data kept apart from AI ranking and selection (no grants, no reads, tested);
+  - seeded, reproducible one-to-one volunteer generation as a draft; shortages and surpluses listed; save, reassign, end and manual assignment with full history;
+  - concurrency: every mutation locks the edition row, unique indexes and triggers back the rules; messages through the existing outbox with truthful status.
 - **Awaiting approval** (decisions in DECISIONS.md):
   - Import column set v1 (TBD-41).
   - Activation validity period: 72 h, configurable (TBD-13).
   - Criteria v1, override, correction and result-message policies and wording (TBD-01, -14, -18, -37).
+  - Jury rubric v1, pitch assignment and rubric-change rules (TBD-20, -21, -43, -50); volunteer pool, roles, messages and shared contact fields (TBD-22, -23, -47, -48, -49).
 
 ### First vertical slice (M1)
 

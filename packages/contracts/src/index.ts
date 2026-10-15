@@ -582,7 +582,7 @@ export type DevSessionRequest = z.input<typeof DevSessionRequest>;
 // ---------------------------------------------------------------- post-sign-in redirects (open-redirect protection)
 /** Internal destinations each web interface may return to after sign-in or MFA. Anything else falls back. */
 export const WEB_RETURN_PATHS = ["/", "/register", "/status", "/activate", "/privacy"] as const;
-export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/users", "/imports"] as const;
+export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/jury", "/volunteers", "/users", "/imports"] as const;
 
 const REDIRECT_BASE = "https://internal.invalid";
 
@@ -607,3 +607,287 @@ export function safeReturnPath(next: string | null | undefined, allowed: readonl
   const permitted = allowed.some((p) => (p === "/" ? path === "/" : path === p || path.startsWith(`${p}/`)));
   return permitted ? `${path}${url.search}${url.hash}` : fallback;
 }
+
+// ================================================================ Phase 6: jury evaluation (FR-JRY-*; TBD-20, -21, -43)
+// Jury scoring is decision support for the event only. It is kept apart from AI ranking and from selection decisions:
+// none of these types appears in the application/selection contracts, and no selection rule reads them.
+
+/** One scoring parameter. Weights are relative (a parameter's share is weight / sum of weights). */
+export const JuryParameter = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, "Use lower-case letters, digits and underscores"),
+    label: z.string().trim().min(1).max(80),
+    description: z.string().trim().min(1).max(300),
+    weight: z.number().int().min(1).max(100),
+    min: z.number().int().min(0).max(100),
+    max: z.number().int().min(1).max(100),
+  })
+  .refine((p) => p.max > p.min, { message: "max must be greater than min", path: ["max"] });
+export type JuryParameter = z.infer<typeof JuryParameter>;
+
+export const JuryParameterList = z
+  .array(JuryParameter)
+  .min(1)
+  .max(12)
+  .superRefine((list, ctx) => {
+    const keys = new Set<string>();
+    list.forEach((p, i) => {
+      if (keys.has(p.key)) ctx.addIssue({ code: "custom", message: "Parameter keys must be unique", path: [i, "key"] });
+      keys.add(p.key);
+    });
+  });
+
+export const RubricCreate = z.object({
+  parameters: JuryParameterList,
+  commentsAllowed: z.boolean().default(true),
+  note: z.string().trim().max(500).optional(),
+});
+export type RubricCreate = z.input<typeof RubricCreate>;
+
+export const Rubric = z.object({
+  id: z.string(),
+  edition: z.number().int(),
+  version: z.number().int(),
+  parameters: z.array(JuryParameter),
+  commentsAllowed: z.boolean(),
+  note: z.string().nullable(),
+  createdBy: z.string().nullable(),
+  createdAt: z.string(),
+  approvedBy: z.string().nullable(),
+  approvedAt: z.string().nullable(),
+  usedByEvaluations: z.number().int(),
+});
+export type Rubric = z.infer<typeof Rubric>;
+
+/** Weighted, range-normalised total from 0 to 100 (2 decimals), computed on the server from the rubric used. */
+export function juryTotal(parameters: JuryParameter[], scores: Record<string, number>): number {
+  const weights = parameters.reduce((a, p) => a + p.weight, 0);
+  const total = parameters.reduce((sum, p) => sum + (p.weight * ((scores[p.key] ?? p.min) - p.min)) / (p.max - p.min), 0);
+  return Math.round((total / weights) * 100 * 100) / 100;
+}
+
+/**
+ * Field errors for jury scores (paths `scores.<key>`): unknown keys rejected, every value an integer within range;
+ * with `complete`, every parameter must be scored (submission).
+ */
+export function checkJuryScores(parameters: JuryParameter[], scores: Record<string, unknown>, opts: { complete: boolean }) {
+  const issues: { path: string; message: string }[] = [];
+  const known = new Set(parameters.map((p) => p.key));
+  for (const k of Object.keys(scores)) if (!known.has(k)) issues.push({ path: `scores.${k}`, message: "Not a parameter of this rubric" });
+  for (const p of parameters) {
+    const v = scores[p.key];
+    if (v === undefined || v === null) {
+      if (opts.complete) issues.push({ path: `scores.${p.key}`, message: `Score ${p.label} (${p.min}–${p.max})` });
+    } else if (typeof v !== "number" || !Number.isInteger(v) || v < p.min || v > p.max) {
+      issues.push({ path: `scores.${p.key}`, message: `Use a whole number from ${p.min} to ${p.max}` });
+    }
+  }
+  return issues;
+}
+
+export const JuryAssignmentRequest = z.object({ juryUserId: z.string().uuid(), startupId: z.string().uuid() });
+export type JuryAssignmentRequest = z.infer<typeof JuryAssignmentRequest>;
+
+export const PitchSlotRequest = z.object({
+  startupId: z.string().uuid(),
+  startsAt: z.string().datetime({ offset: true }).nullable().optional(),
+  venue: z.string().trim().max(200).nullable().optional(),
+});
+export type PitchSlotRequest = z.input<typeof PitchSlotRequest>;
+export const PitchSlotUpdate = z.object({
+  startsAt: z.string().datetime({ offset: true }).nullable().optional(),
+  venue: z.string().trim().max(200).nullable().optional(),
+});
+export type PitchSlotUpdate = z.input<typeof PitchSlotUpdate>;
+
+export const EvaluationSave = z.object({
+  scores: z.record(z.string().max(64), z.number()),
+  comments: z.string().trim().max(2000).optional(),
+});
+export type EvaluationSave = z.input<typeof EvaluationSave>;
+
+export const ReopenRequest = z.object({ reason: z.string().trim().min(1, "Give the reason for reopening").max(2000) });
+
+export const PitchSlot = z.object({
+  id: z.string(),
+  startupId: z.string(),
+  startupName: z.string(),
+  startsAt: z.string().nullable(),
+  venue: z.string().nullable(),
+  state: z.enum(["scheduled", "pitching", "done"]),
+});
+export type PitchSlot = z.infer<typeof PitchSlot>;
+
+export const EvaluationState = z.enum(["draft", "submitted", "reopened"]);
+
+export const JuryOverview = z.object({
+  edition: z.number().int(),
+  rubrics: z.array(Rubric),
+  /** The latest approved rubric version: what jurors score with now. */
+  activeRubricId: z.string().nullable(),
+  jurors: z.array(z.object({ id: z.string(), fullName: z.string(), status: z.enum(ACCOUNT_STATUSES), assigned: z.number().int() })),
+  startups: z.array(z.object({ id: z.string(), name: z.string(), origin: z.enum(["predefined", "applicant"]) })),
+  assignments: z.array(z.object({
+    id: z.string(), juryUserId: z.string(), juryName: z.string(), startupId: z.string(), startupName: z.string(), createdAt: z.string(),
+    evaluation: z.object({ id: z.string(), state: EvaluationState, totalScore: z.number().nullable(), submittedAt: z.string().nullable() }).nullable(),
+  })),
+  slots: z.array(PitchSlot),
+  currentPitch: PitchSlot.nullable(),
+});
+export type JuryOverview = z.infer<typeof JuryOverview>;
+
+export const EvaluationDetail = z.object({
+  id: z.string(),
+  assignmentId: z.string(),
+  startupId: z.string(),
+  startupName: z.string(),
+  juryUserId: z.string(),
+  juryName: z.string(),
+  state: EvaluationState,
+  rubricId: z.string(),
+  rubricVersion: z.number().int(),
+  scores: z.record(z.string(), z.number()),
+  comments: z.string().nullable(),
+  totalScore: z.number().nullable(),
+  submittedAt: z.string().nullable(),
+  reopenedAt: z.string().nullable(),
+  reopenReason: z.string().nullable(),
+});
+export type EvaluationDetail = z.infer<typeof EvaluationDetail>;
+
+/** FR-JRY-16: per-startup score summaries for Management, as decision support only. Never a winner (FR-JRY-10). */
+export const EvaluationReview = z.object({
+  edition: z.number().int(),
+  startups: z.array(z.object({
+    startupId: z.string(),
+    startupName: z.string(),
+    assigned: z.number().int(),
+    submitted: z.number().int(),
+    /** Summaries per rubric version: totals from different versions are never mixed. */
+    byRubric: z.array(z.object({
+      rubricId: z.string(), version: z.number().int(), count: z.number().int(), averageTotal: z.number(),
+      parameters: z.array(z.object({ key: z.string(), label: z.string(), average: z.number(), min: z.number(), max: z.number() })),
+    })),
+  })),
+  evaluations: z.array(EvaluationDetail),
+});
+export type EvaluationReview = z.infer<typeof EvaluationReview>;
+
+/** What a juror sees for an edition: own assignments, the pitch schedule, the current pitch and own evaluations only. */
+export const JuryHome = z.object({
+  edition: z.number().int(),
+  rubric: z.object({ id: z.string(), version: z.number().int(), parameters: z.array(JuryParameter), commentsAllowed: z.boolean() }).nullable(),
+  currentPitch: z.object({ startupId: z.string(), startupName: z.string(), venue: z.string().nullable(), assigned: z.boolean() }).nullable(),
+  startups: z.array(z.object({
+    startupId: z.string(),
+    name: z.string(),
+    city: z.string().nullable(),
+    state: z.string().nullable(),
+    slot: z.object({ startsAt: z.string().nullable(), venue: z.string().nullable(), state: z.enum(["scheduled", "pitching", "done"]) }).nullable(),
+    evaluation: z.object({
+      state: EvaluationState, scores: z.record(z.string(), z.number()), comments: z.string().nullable(), totalScore: z.number().nullable(),
+      submittedAt: z.string().nullable(), rubricVersion: z.number().int(),
+    }).nullable(),
+  })),
+});
+export type JuryHome = z.infer<typeof JuryHome>;
+
+/** The authorised startup and founder information a juror may review (FR-JRY-04). No contact details, no AI data. */
+export const JuryStartupProfile = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  website: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  origin: z.enum(["predefined", "applicant"]),
+  founders: z.array(z.object({ fullName: z.string(), position: z.enum(["leader", "member"]) })),
+  answers: z.array(z.object({ question: z.string(), answer: z.string() })),
+  assigned: z.boolean(),
+});
+export type JuryStartupProfile = z.infer<typeof JuryStartupProfile>;
+
+// ================================================================ Phase 6: volunteer assignment (FR-VOL-*; TBD-22, -23)
+export const VolunteerTargetRef = z.object({ type: z.enum(["startup", "jury"]), id: z.string().uuid() });
+export type VolunteerTargetRef = z.infer<typeof VolunteerTargetRef>;
+export const VolunteerTarget = VolunteerTargetRef.extend({ name: z.string() });
+export type VolunteerTarget = z.infer<typeof VolunteerTarget>;
+export const PersonRef = z.object({ id: z.string(), name: z.string() });
+
+export const VolunteerAssignmentItem = z.object({
+  id: z.string(),
+  edition: z.number().int(),
+  state: z.enum(["draft", "active", "closed"]),
+  volunteer: PersonRef,
+  target: VolunteerTarget,
+  runId: z.string().nullable(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  reason: z.string().nullable(),
+  activatedAt: z.string().nullable(),
+  closedAt: z.string().nullable(),
+  closedBy: z.string().nullable(),
+  closeReason: z.string().nullable(),
+  replacesId: z.string().nullable(),
+  /** FR-NOT-04: delivery status of the messages about this assignment, exactly as recorded. */
+  notifications: z.array(z.object({ recipient: z.enum(["volunteer", "target"]), channel: z.string(), status: z.string(), sentAt: z.string().nullable() })),
+});
+export type VolunteerAssignmentItem = z.infer<typeof VolunteerAssignmentItem>;
+
+export const VolunteerRun = z.object({
+  id: z.string(),
+  edition: z.number().int(),
+  state: z.enum(["draft", "approved", "discarded"]),
+  seed: z.string(),
+  startedBy: z.string(),
+  createdAt: z.string(),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  volunteerCount: z.number().int(),
+  targetCount: z.number().int(),
+  pairs: z.array(VolunteerAssignmentItem),
+  /** FR-VOL-06: targets left without a volunteer because there were not enough. Never hidden by doubling up. */
+  unassignedTargets: z.array(VolunteerTarget),
+  /** FR-VOL-16: volunteers left over when they outnumber the targets. */
+  surplusVolunteers: z.array(PersonRef),
+});
+export type VolunteerRun = z.infer<typeof VolunteerRun>;
+
+export const VolunteerOverview = z.object({
+  edition: z.number().int(),
+  draftRun: VolunteerRun.nullable(),
+  runs: z.array(z.object({ id: z.string(), state: z.enum(["draft", "approved", "discarded"]), createdAt: z.string(), startedBy: z.string(),
+    reviewedBy: z.string().nullable(), pairs: z.number().int(), unassignedTargets: z.number().int(), surplusVolunteers: z.number().int() })),
+  active: z.array(VolunteerAssignmentItem),
+  /** Targets with no open assignment now (TBD-22 pool): what still needs a volunteer. */
+  unassignedTargets: z.array(VolunteerTarget),
+  freeVolunteers: z.array(PersonRef),
+  history: z.array(VolunteerAssignmentItem),
+});
+export type VolunteerOverview = z.infer<typeof VolunteerOverview>;
+
+const assignmentReason = z.string().trim().min(1, "Give the reason").max(2000);
+export const ReassignRequest = z
+  .object({ reason: assignmentReason, volunteerUserId: z.string().uuid().optional(), target: VolunteerTargetRef.optional() })
+  .refine((r) => r.volunteerUserId || r.target, { message: "Choose a new volunteer, a new target, or both" });
+export type ReassignRequest = z.infer<typeof ReassignRequest>;
+export const ManualAssignRequest = z.object({ volunteerUserId: z.string().uuid(), target: VolunteerTargetRef, reason: assignmentReason });
+export type ManualAssignRequest = z.infer<typeof ManualAssignRequest>;
+export const CloseAssignmentRequest = z.object({ reason: assignmentReason });
+
+/** A volunteer's own assignment, with the target's authorised coordination contact (FR-VOL-12, TBD-49). */
+export const MyVolunteerAssignment = z.object({
+  edition: z.number().int(),
+  assignment: z.object({
+    target: z.object({ type: z.enum(["startup", "jury"]), name: z.string(), contactName: z.string(), mobile: z.string().nullable() }),
+    since: z.string(),
+  }).nullable(),
+});
+export type MyVolunteerAssignment = z.infer<typeof MyVolunteerAssignment>;
+
+/** The volunteer assigned to the caller's startup (leader) or to the caller as a juror (FR-VOL-12, TBD-49). */
+export const MyVolunteer = z.object({
+  edition: z.number().int(),
+  volunteer: z.object({ name: z.string(), mobile: z.string().nullable(), for: z.enum(["startup", "jury"]) }).nullable(),
+});
+export type MyVolunteer = z.infer<typeof MyVolunteer>;
