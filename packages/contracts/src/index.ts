@@ -347,3 +347,32 @@ export const DevSessionRequest = z
   })
   .refine((b) => !!b.email !== !!b.phone, { message: "Provide either an email or a mobile number" });
 export type DevSessionRequest = z.input<typeof DevSessionRequest>;
+
+// ---------------------------------------------------------------- post-sign-in redirects (open-redirect protection)
+/** Internal destinations each web interface may return to after sign-in or MFA. Anything else falls back. */
+export const WEB_RETURN_PATHS = ["/", "/register", "/status", "/activate", "/privacy"] as const;
+export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/users", "/imports"] as const;
+
+const REDIRECT_BASE = "https://internal.invalid";
+
+/**
+ * Returns `next` only if it is a same-origin path on the allow-list (exact path or a sub-path of an entry);
+ * otherwise `fallback`. Rejects absolute and scheme URLs, protocol-relative `//host`, backslashes, control
+ * characters and anything that resolves to another origin, so a crafted sign-in or MFA link cannot send a
+ * freshly authenticated user to an external site.
+ */
+export function safeReturnPath(next: string | null | undefined, allowed: readonly string[], fallback: string): string {
+  if (typeof next !== "string" || next.length === 0 || next.length > 512) return fallback;
+  // eslint-disable-next-line no-control-regex
+  if (!next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u001F\u007F]/.test(next)) return fallback;
+  let url: URL;
+  try {
+    url = new URL(next, REDIRECT_BASE);
+  } catch {
+    return fallback;
+  }
+  if (url.origin !== REDIRECT_BASE) return fallback;
+  const path = url.pathname;
+  const permitted = allowed.some((p) => (p === "/" ? path === "/" : path === p || path.startsWith(`${p}/`)));
+  return permitted ? `${path}${url.search}${url.hash}` : fallback;
+}

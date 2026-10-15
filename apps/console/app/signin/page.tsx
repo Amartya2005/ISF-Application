@@ -1,11 +1,12 @@
 "use client";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CONSOLE_RETURN_PATHS, safeReturnPath } from "@sj/contracts";
 import { authMode, startSignIn, verifyCode } from "@/lib/session";
 
 function Form() {
   const router = useRouter();
-  const next = useSearchParams().get("next") ?? "/";
+  const next = safeReturnPath(useSearchParams().get("next"), CONSOLE_RETURN_PATHS, "/");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"email" | "code">("email");

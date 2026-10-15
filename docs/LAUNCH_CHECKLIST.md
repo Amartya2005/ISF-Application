@@ -19,7 +19,12 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 
 ## B. Live Supabase staging tests (B-06). The code is tested against Supabase-shaped data, not a live project.
 
-Run each case on staging and record the result and date:
+Two tools support this section:
+
+- **Automated server-side checks:** `pnpm --filter @sj/api staging:verify` (`apps/api/scripts/staging-verify.ts`). It covers real email OTP and SMS OTP (via a Supabase test number) sessions, JWKS keys, session refresh, sign-out revocation, the unconfirmed-email linking attack, and TOTP MFA elevation. It refuses to run unless the target is confirmed as staging, and it cleans up the users it creates.
+- **Real phones:** [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md), cases D1–D12: keychain persistence, background refresh, sign-out, reinstall behaviour, and console MFA on phone browsers.
+
+Neither has been run yet; no staging project exists (TBD-36). Run each case on staging and record the result and date:
 
 - [ ] Email OTP sign-in: a new applicant registers; their email is stored only after Supabase confirms it.
 - [ ] SMS OTP sign-in (needs the SMS provider and DLT registration, TBD-35): the phone-only applicant flow works; no email is stored.
@@ -29,7 +34,8 @@ Run each case on staging and record the result and date:
 - [ ] JWKS verification passes with the project's real signing keys (ES256/RS256); anonymous sessions are rejected.
 - [ ] Admin API outage → 503 for unlinked identities only. Check the rate limits against the expected sign-up volume.
 - [ ] Staff TOTP MFA: enrol, verify, get aal2; without aal2 → `mfa_required` on every privileged endpoint.
-- [ ] Mobile app on a real Android and iPhone: the session persists in the keychain across restarts, and sign-out clears it.
+- [ ] Mobile app on a real Android and iPhone: every case in DEVICE_TEST_PROTOCOL.md (D1–D12) passes, and the iOS reinstall behaviour (D8) is decided.
+- [ ] `staging:verify` reports 0 failures and 0 skips, with all optional settings provided.
 
 ## C. Content and policy decisions
 
@@ -43,6 +49,7 @@ Run each case on staging and record the result and date:
 ## D. Security and operations
 
 - [ ] Independent security review / penetration test of the API, console and app; findings closed.
+- [ ] Any CSV/spreadsheet export added later uses `apps/api/src/platform/csv-export.ts` (formula-injection escaping). Reviewed in code review.
 - [ ] Load test at the agreed peak (registration close, event days).
 - [ ] Backups and point-in-time recovery on; restore drill done on staging (AT-36).
 - [ ] Monitoring, error reporting and uptime checks in place; on-call contact named.

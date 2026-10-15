@@ -232,6 +232,23 @@ describe("malformed rows are reported per row and never imported", () => {
     expect((await t.sql`select count(*)::int as n from user_accounts where email = 'extra@jury.test'`)[0]!.n).toBe(0);
   });
 
+  it("rejects minus-prefixed and full-width formula-like values in exportable text fields (regression)", async () => {
+    const r = await preview("startups", csv(
+      "startup_name,position,full_name,email,description,city",
+      "-2+3+cmd|' /C calc'!A0,leader,Minus Name,minus1@startup.test,,",
+      "Fine Startup,leader,-Leading Dash,minus2@startup.test,,",
+      "Desc Startup,leader,Desc Person,minus3@startup.test,- bullet that Excel would evaluate,",
+      "City Startup,leader,City Person,minus4@startup.test,,\uFF1DSUM(1)",
+      "Clean Startup,leader,Hyphen-ated Name,clean@startup.test,Low-cost sensors,Gunupur",
+    ));
+    const fields = (n: number) => r.json.rows.find((x: { rowNumber: number }) => x.rowNumber === n).errors.map((e: { field: string }) => e.field);
+    expect(fields(2)).toContain("startup_name");
+    expect(fields(3)).toContain("full_name");
+    expect(fields(4)).toContain("description");
+    expect(fields(5)).toContain("city");
+    expect(r.json.rows.find((x: { rowNumber: number }) => x.rowNumber === 6)).toMatchObject({ outcome: "valid", errors: [] });   // inner hyphens are fine
+  });
+
   it("does not treat a leading + in a mobile number as a formula", async () => {
     const r = await preview("delegates", csv("full_name,mobile", "Plus Number,+44 7700 900123"));
     expect(r.json.rows[0]).toMatchObject({ outcome: "valid", errors: [] });

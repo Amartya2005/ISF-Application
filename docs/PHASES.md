@@ -29,3 +29,4 @@ All phases build on the locked architecture in [ARCHITECTURE.md](ARCHITECTURE.md
 2. Each permission and each business rule has an integration test; DB constraints back the critical ones.
 3. TBD decisions stay configurable or are labelled provisional in the UI and docs. Open items are listed in EXECUTION_PLAN §9.
 4. A phase is closed only after typecheck, the full API suite, production builds and the browser end-to-end run all pass.
+5. Any redirect target taken from a URL goes through `safeReturnPath` with an allow-list. Any CSV or spreadsheet export goes through `platform/csv-export.ts`.

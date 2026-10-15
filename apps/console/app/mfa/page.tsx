@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CONSOLE_RETURN_PATHS, safeReturnPath } from "@sj/contracts";
 import type { MfaEnrolment } from "@sj/web-session";
 import { authMode, mfa, useSessionIdentity } from "@/lib/session";
 
@@ -11,7 +12,8 @@ import { authMode, mfa, useSessionIdentity } from "@/lib/session";
  */
 function MfaStep() {
   const router = useRouter();
-  const next = useSearchParams().get("next") ?? "/";
+  // Used by router.replace and window.location.assign below: only approved console pages.
+  const next = safeReturnPath(useSearchParams().get("next"), CONSOLE_RETURN_PATHS, "/");
   const who = useSessionIdentity();
   const [factorId, setFactorId] = useState<string | null | undefined>(undefined);
   const [enrolment, setEnrolment] = useState<MfaEnrolment | null>(null);

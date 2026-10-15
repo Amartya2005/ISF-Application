@@ -1,14 +1,15 @@
 "use client";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { normaliseMobile, type SignInIdentifier, type SignInMethod } from "@sj/contracts";
+import { normaliseMobile, safeReturnPath, WEB_RETURN_PATHS, type SignInIdentifier, type SignInMethod } from "@sj/contracts";
 import { authMode, signInMethods, startSignIn, verifyCode } from "@/lib/session";
 
 const LABEL: Record<SignInMethod, string> = { email: "Sign in with email", phone: "Sign in with mobile number" };
 
 function SignInForm() {
   const router = useRouter();
-  const next = useSearchParams().get("next") ?? "/status";
+  // Only approved internal pages: a crafted link must not redirect a freshly signed-in user elsewhere.
+  const next = safeReturnPath(useSearchParams().get("next"), WEB_RETURN_PATHS, "/status");
   const [method, setMethod] = useState<SignInMethod>(signInMethods[0] ?? "email");
   const [value, setValue] = useState("");
   const [who, setWho] = useState<SignInIdentifier | null>(null);

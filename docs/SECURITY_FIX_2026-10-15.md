@@ -202,3 +202,11 @@ This section brings the report up to date with work done after the fix. Sections
 | GitHub Actions | ✅ green on `main` (see the Actions tab for the run of this commit) |
 
 Not verified: anything that needs a live Supabase project, an SMS provider, real devices or production infrastructure. Launch checklist §B covers these.
+
+### Review follow-up (15 Oct 2026, after §8)
+
+| Item | Resolution |
+|---|---|
+| **Open redirect** after sign-in or MFA. The `next` parameter was passed straight to `router.push`, `router.replace` and `window.location.assign` on the website sign-in, console sign-in and console MFA pages. | ✅ Fixed. All three now use `safeReturnPath`, which allows only approved internal paths. Absolute, `//host`, backslash, control-character, encoded-slash and dot-segment variants fall back to a safe page. 18 tests. |
+| **Formula injection:** a leading `-` was not rejected. | ✅ Import validation now rejects `=`, `+`, `-`, `@`, tab and carriage return, and their full-width forms, in exportable text fields (regression test included). Mobile numbers and emails keep their own rules. `platform/csv-export.ts` escapes every exported cell; it is tested, and its use for all future exports is a project rule. |
+| **Real-device and live-Supabase validation.** | ⏳ Still open by design. `staging:verify` (automated, tested guards, RFC 6238 TOTP) and DEVICE_TEST_PROTOCOL.md (D1–D12) are ready to run once an organiser-owned staging project exists. Production stays closed until they are signed off (launch gate). |

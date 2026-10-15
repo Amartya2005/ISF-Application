@@ -25,8 +25,12 @@ const MAX_CELL = 5000;
 const ROW_FIELD = "row";
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-/** Text that a spreadsheet would run as a formula if these records are ever exported again (CSV injection). */
-const FORMULA_START = /^[=+@\t\r]/;
+/**
+ * Text that a spreadsheet would run as a formula if these records are ever exported again (CSV injection):
+ * = + - @, tab and carriage return, and their full-width forms. Checked on exportable free-text fields only;
+ * mobile numbers (+91…) and emails are validated by their own rules. Exports also escape (platform/csv-export.ts).
+ */
+const FORMULA_START = /^[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/;
 const FORMULA_CHECKED = ["full_name", "startup_name", "description", "website", "city", "state", "position"];
 
 type RawRow = { rowNumber: number; data: Record<string, string>; issues?: { errors: ImportIssue[]; warnings: ImportIssue[] } };
@@ -123,7 +127,7 @@ export async function analyse(db: Db, category: ImportCategory, rows: RawRow[]):
       else if (CONTROL_CHARS.test(value)) errors.push({ field, reason: "Contains hidden control characters" });
       if (value.length > MAX_CELL) errors.push({ field, reason: `Longer than ${MAX_CELL} characters` });
       if (FORMULA_CHECKED.includes(field) && FORMULA_START.test(value)) {
-        errors.push({ field, reason: "Starts with =, + or @, which spreadsheets treat as a formula. Remove that character" });
+        errors.push({ field, reason: "Starts with =, +, - or @, which spreadsheets treat as a formula. Remove that character" });
       }
     }
     const fullName = data.full_name ?? "";

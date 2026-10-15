@@ -234,6 +234,7 @@ python3 -m playwright install chromium
 python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots   # website + Management
 python3 scripts/e2e_admin.py /tmp/startup-jathara-shots   # Admin import → activation
 python3 scripts/e2e_phone.py /tmp/startup-jathara-shots   # sign-in by mobile number
+python3 scripts/e2e_redirect.py                           # crafted ?next= links stay on-site
 # staff MFA: restart the API with REQUIRE_STAFF_MFA=true, then
 python3 scripts/e2e_mfa.py /tmp/startup-jathara-shots
 # mobile: serve the web build on :8081 and add http://localhost:8081 to CORS_ORIGINS, then
@@ -297,6 +298,7 @@ The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`]
 - [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
 - [Technical Execution Plan](docs/EXECUTION_PLAN.md) — decisions, data model, APIs, security practices, milestones, backlog and open items.
 - [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement, reconciled to the current state (§8).
+- [Device test protocol](docs/DEVICE_TEST_PROTOCOL.md) — real-phone checks for sessions, refresh, sign-out and MFA (with `pnpm --filter @sj/api staging:verify` for the live Supabase server side).
 - [Launch checklist](docs/LAUNCH_CHECKLIST.md) — what must be signed off before production; the API refuses to start in production until then.
 - **Product requirements:** `Startup_Jathara_PRD_v1.0` is the source-of-truth requirements baseline and is maintained separately from this initial code archive.
 
