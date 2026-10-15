@@ -3,7 +3,7 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
-  ACCOUNT_STATUSES, ActivationRequest, DecisionRequest, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
+  ACCOUNT_STATUSES, ActivationRequest, DecisionRequest, DevSessionRequest, normaliseMobile, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
   RegistrationRequest, ReleaseRequest, ROLES, RoleGrantRequest, SelectionLimitRequest,
 } from "@sj/contracts";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import { myNotifications } from "./modules/notifications/service.js";
 import { myApplications, register } from "./modules/registration/service.js";
 import { draftDecision, getApplication, listApplications, releaseDecisions, setSelectionLimit, withdrawDraft } from "./modules/selection/service.js";
 import { issueDevToken, type IdentityResolver, type TokenVerifier } from "./platform/auth.js";
-import { parse, registerErrorHandler } from "./platform/errors.js";
+import { AppError, parse, registerErrorHandler } from "./platform/errors.js";
 import { authenticate, principalOf, requireEditionAccess, requirePermission, resolvePrincipal } from "./platform/principal.js";
 
 export type Clock = () => Date;
@@ -185,8 +185,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {
     app.post("/v1/dev/session", async (req) => {
-      const body = parse(z.object({ email: z.string().trim().toLowerCase().email(), mfa: z.boolean().optional() }), req.body);
-      return { token: await issueDevToken(config.devAuthSecret!, body.email, { aal: body.mfa ? "aal2" : "aal1" }) };
+      const body = parse(DevSessionRequest, req.body);
+      const phone = body.phone ? normaliseMobile(body.phone) : null;
+      if (body.phone && !phone) throw new AppError(400, "validation_failed", "Enter a valid mobile number");
+      return { token: await issueDevToken(config.devAuthSecret!, body.email ?? null, { aal: body.mfa ? "aal2" : "aal1", ...(phone ? { phone } : {}) }) };
     });
   }
 

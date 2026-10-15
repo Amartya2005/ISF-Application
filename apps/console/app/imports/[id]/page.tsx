@@ -5,6 +5,7 @@ import { IMPORT_COLUMNS, type ImportBatchDetail, type ImportRow } from "@sj/cont
 import { formatIst } from "@sj/client";
 import { api } from "@/lib/session";
 import { can, useMe } from "@/lib/me";
+import { MfaPrompt } from "../../mfa-prompt";
 
 const OUTCOME_TEXT: Record<ImportRow["outcome"], string> = {
   valid: "Ready", invalid: "Has errors", duplicate: "Duplicate", created: "Created", linked: "Linked", excluded: "Excluded",
@@ -31,6 +32,7 @@ export default function ImportPage({ params }: { params: Promise<{ id: string }>
 
   if (email === undefined) return null;
   if (!email) return <p>Please <Link href={`/signin?next=/imports/${id}`}>sign in</Link>.</p>;
+  if (me?.mfaRequired) return <MfaPrompt />;
   if (me && !can(me, "import.manage")) return <p className="notice notice-error">Your account does not have Admin permissions.</p>;
   if (!b) return error ? <p className="notice notice-error">{error}</p> : <p className="muted">Loading…</p>;
 

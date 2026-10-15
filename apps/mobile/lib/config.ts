@@ -1,6 +1,7 @@
 // Runtime configuration. EXPO_PUBLIC_* values are inlined at build time; set them per environment (EAS profiles).
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { parseSignInMethods } from "@sj/contracts";
 
 /** In development on a phone, "localhost" is the phone itself: reach the API on the computer running Expo instead. */
 function devMachineApi(): string | null {
@@ -15,3 +16,5 @@ export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 /** Public website, for the privacy notice and anything the app links out to. */
 export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL || API_URL.replace(/:4000$/, ":3000");
+/** One-time-code channels offered (TBD-12: email, mobile or both). Default: both. */
+export const SIGNIN_METHODS = parseSignInMethods(process.env.EXPO_PUBLIC_SIGNIN_METHODS);

@@ -193,3 +193,47 @@ describe("bulk import: validate → preview → commit", () => {
     for (const b of r.json) expect(b).toMatchObject({ uploadedBy: expect.any(String), uploadedAt: expect.any(String), fileSha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
 });
+
+describe("malformed rows are reported per row and never imported", () => {
+  let t: TestApp;
+  beforeAll(async () => { t = await createTestApp(); await t.staff(ADMIN, ["admin"]); });
+  afterAll(async () => { await t.close(); });
+  const preview = (category: string, body: string) =>
+    t.call("POST", "/v1/admin/imports", { as: ADMIN, body: { category, edition: 2026, fileName: "m.csv", csv: body } });
+
+  it("flags column-count mismatches, control characters, unreadable text, oversized cells and formula prefixes", async () => {
+    const r = await preview("jury", csv(
+      "full_name,email,mobile",
+      "Extra Values,extra@jury.test,9811100001,surprise",          // 2: value beyond the header (unquoted comma)
+      "Trailing Commas,trail@jury.test,9811100002,,",              // 3: empty extras are harmless
+      "Short Row,short@jury.test",                                 // 4: fewer values → warning only
+      "Bell\u0007Name,bell@jury.test,",                             // 5: control character
+      "Mojibake �,moji@jury.test,",                            // 6: unreadable byte
+      "=HYPERLINK(\"http://x\"),formula@jury.test,",               // 7: formula injection
+      `${"A".repeat(5001)},long@jury.test,`,                        // 8: oversized cell
+      "@SUM(1),at@jury.test,",                                      // 9: formula injection
+      "Fine Person,fine@jury.test,",                                // 10: valid
+    ));
+    expect(r.status).toBe(201);
+    const row = (n: number) => r.json.rows.find((x: { rowNumber: number }) => x.rowNumber === n);
+    expect(row(2)).toMatchObject({ outcome: "invalid", errors: [{ field: "row", reason: expect.stringContaining("Has 4 values but the header has 3 columns") }] });
+    expect(row(3)).toMatchObject({ outcome: "valid", errors: [], warnings: [] });
+    expect(row(4)).toMatchObject({ outcome: "valid", warnings: [{ field: "row", reason: expect.stringContaining("treated as empty") }] });
+    expect(row(5).errors).toContainEqual({ field: "full_name", reason: "Contains hidden control characters" });
+    expect(row(6).errors[0].reason).toContain("Save the file as CSV UTF-8");
+    expect(row(7).errors).toContainEqual({ field: "full_name", reason: expect.stringContaining("formula") });
+    expect(row(8).errors).toContainEqual({ field: "full_name", reason: "Longer than 5000 characters" });
+    expect(row(9).outcome).toBe("invalid");
+    expect(row(10)).toMatchObject({ outcome: "valid", errors: [] });
+
+    // Commit re-checks: structural problems recorded at preview still block the row.
+    const c = await t.call("POST", `/v1/admin/imports/${r.json.id}/commit`, { as: ADMIN, body: {} });
+    expect(c.json.rows.filter((x: { outcome: string }) => x.outcome === "created").map((x: { rowNumber: number }) => x.rowNumber)).toEqual([3, 4, 10]);
+    expect((await t.sql`select count(*)::int as n from user_accounts where email = 'extra@jury.test'`)[0]!.n).toBe(0);
+  });
+
+  it("does not treat a leading + in a mobile number as a formula", async () => {
+    const r = await preview("delegates", csv("full_name,mobile", "Plus Number,+44 7700 900123"));
+    expect(r.json.rows[0]).toMatchObject({ outcome: "valid", errors: [] });
+  });
+});

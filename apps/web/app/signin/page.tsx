@@ -1,14 +1,18 @@
 "use client";
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authMode, startSignIn, verifyCode } from "@/lib/session";
+import { normaliseMobile, type SignInIdentifier, type SignInMethod } from "@sj/contracts";
+import { authMode, signInMethods, startSignIn, verifyCode } from "@/lib/session";
+
+const LABEL: Record<SignInMethod, string> = { email: "Sign in with email", phone: "Sign in with mobile number" };
 
 function SignInForm() {
   const router = useRouter();
   const next = useSearchParams().get("next") ?? "/status";
-  const [email, setEmail] = useState("");
+  const [method, setMethod] = useState<SignInMethod>(signInMethods[0] ?? "email");
+  const [value, setValue] = useState("");
+  const [who, setWho] = useState<SignInIdentifier | null>(null);
   const [code, setCode] = useState("");
-  const [stage, setStage] = useState<"email" | "code">("email");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -17,12 +21,18 @@ function SignInForm() {
     setError(null);
     setBusy(true);
     try {
-      if (stage === "email") {
-        const r = await startSignIn(email.trim());
+      if (!who) {
+        let id: SignInIdentifier;
+        if (method === "phone") {
+          const phone = normaliseMobile(value);
+          if (!phone) throw new Error("Enter a valid mobile number, e.g. 98765 43210");
+          id = { phone };
+        } else id = { email: value.trim() };
+        const r = await startSignIn(id);
         if (r === "signed_in") router.push(next);
-        else setStage("code");
+        else setWho(id);
       } else {
-        await verifyCode(email.trim(), code.trim());
+        await verifyCode(who, code.trim());
         router.push(next);
       }
     } catch (err) {
@@ -36,18 +46,35 @@ function SignInForm() {
     <form onSubmit={submit} style={{ maxWidth: 420 }}>
       <h1>Sign in</h1>
       <p className="muted">
-        {stage === "email"
-          ? "Enter your email. We use it to identify your application and send you updates."
-          : `Enter the code we sent to ${email}.`}
+        {!who
+          ? "Sign in with a one-time code. Use the email or mobile number you registered with, or the one the event team holds for you."
+          : `Enter the code we sent to ${"email" in who ? who.email : who.phone}.`}
       </p>
       {authMode === "dev" && <p className="notice notice-warn small">Development sign-in: no code is sent. Never enabled in production.</p>}
-      {stage === "email" ? (
-        <label>Email<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      {!who ? (
+        <>
+          {signInMethods.length > 1 && (
+            <div className="choices" role="radiogroup" aria-label="Sign in with">
+              {signInMethods.map((m) => (
+                <label className="choice" key={m}>
+                  <input type="radio" name="method" checked={method === m} onChange={() => { setMethod(m); setValue(""); }} />
+                  <span>{LABEL[m]}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {method === "email" ? (
+            <label>Email<input type="email" required autoComplete="email" value={value} onChange={(e) => setValue(e.target.value)} /></label>
+          ) : (
+            <label>Mobile number<span className="hint">Indian numbers can be entered as 10 digits; others with +country code.</span>
+              <input type="tel" required autoComplete="tel" value={value} onChange={(e) => setValue(e.target.value)} /></label>
+          )}
+        </>
       ) : (
-        <label>One-time code<input type="text" inputMode="numeric" required value={code} onChange={(e) => setCode(e.target.value)} /></label>
+        <label>One-time code<input type="text" inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} /></label>
       )}
       {error && <p className="field-error" role="alert">{error}</p>}
-      <div><button className="btn btn-primary" disabled={busy}>{stage === "email" ? "Continue" : "Verify and sign in"}</button></div>
+      <div><button className="btn btn-primary" disabled={busy}>{!who ? "Continue" : "Verify and sign in"}</button></div>
     </form>
   );
 }

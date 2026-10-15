@@ -14,6 +14,7 @@ export function me(p: Principal): MeResponse {
     roles: [...p.roles].sort(),
     editionAccess: [...p.editionAccess].sort(),
     permissions: [...permissionsOf(p)].sort(),
+    mfaRequired: permissionsOf(p, { ignoreMfa: true }).size > permissionsOf(p).size,
   };
 }
 

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError } from "@sj/client";
 import type { PublicEdition, RegistrationResponse, YearOption } from "@sj/contracts";
-import { api, useSessionEmail } from "@/lib/session";
+import { api, useSessionIdentity } from "@/lib/session";
 
 type Form = {
   yearOption: YearOption | "";
@@ -19,7 +19,7 @@ const OPTIONS: { value: YearOption; label: string; years: number[] }[] = [
 ];
 
 export default function RegisterPage() {
-  const email = useSessionEmail();
+  const email = useSessionIdentity();
   const [editions, setEditions] = useState<PublicEdition[] | null>(null);
   const [f, setF] = useState<Form>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -67,7 +67,7 @@ export default function RegisterPage() {
     return (
       <div className="card" style={{ maxWidth: 560 }}>
         <h1>Register your startup</h1>
-        <p>Sign in with your email first. You will use the same sign-in to check your application status.</p>
+        <p>Sign in first with your email or mobile number. You will use the same sign-in to check your application status.</p>
         <Link className="btn btn-primary" href="/signin?next=/register">Sign in to continue</Link>
       </div>
     );

@@ -2,23 +2,24 @@
 // staging/production (B-06). Every permission is enforced by the API; the app only adapts what it shows.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ApiError, createApi, type Api } from "@sj/client";
-import type { MeResponse } from "@sj/contracts";
+import { type MeResponse, type SignInIdentifier, type SignInMethod } from "@sj/contracts";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { API_URL, AUTH_MODE, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
-import { secureStorage } from "./storage";
+import { API_URL, AUTH_MODE, SIGNIN_METHODS, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { secureStorage, supabaseAuthStorage } from "./storage";
 
 const DEV_TOKEN_KEY = "sj.mobile.token";
 
 type Session = {
   api: Api;
   authMode: "dev" | "supabase";
+  signInMethods: SignInMethod[];
   /** undefined while restoring the saved session at start-up. */
   signedIn: boolean | undefined;
   me: MeResponse | null;
   meError: string | null;
   refreshMe: () => Promise<MeResponse | null>;
-  startSignIn: (email: string) => Promise<"signed_in" | "code_sent">;
-  verifyCode: (email: string, code: string) => Promise<void>;
+  startSignIn: (id: SignInIdentifier) => Promise<"signed_in" | "code_sent">;
+  verifyCode: (id: SignInIdentifier, code: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -32,12 +33,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const sb = useCallback(async () => {
     if (!supabase.current) {
-      const [{ createClient }, AsyncStorage] = await Promise.all([
-        import("@supabase/supabase-js"),
-        import("@react-native-async-storage/async-storage").then((m) => m.default),
-      ]);
+      const { createClient } = await import("@supabase/supabase-js");
+      // The session (access + refresh token) lives in the device keychain/keystore, never in plain AsyncStorage.
       supabase.current = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+        auth: { storage: supabaseAuthStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
       });
     }
     return supabase.current;
@@ -77,21 +76,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })();
   }, [getToken, refreshMe]);
 
-  const startSignIn = useCallback(async (email: string) => {
+  const startSignIn = useCallback(async (id: SignInIdentifier) => {
     if (AUTH_MODE === "dev") {
-      const { token } = await api.devSession(email.trim().toLowerCase());
+      const { token } = await api.devSession(id);
       await secureStorage.set(DEV_TOKEN_KEY, token);
       setSignedIn(true);
       await refreshMe();
       return "signed_in" as const;
     }
-    const { error } = await (await sb()).auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+    const client = await sb();
+    const { error } = "email" in id
+      ? await client.auth.signInWithOtp({ email: id.email, options: { shouldCreateUser: true } })
+      : await client.auth.signInWithOtp({ phone: id.phone, options: { shouldCreateUser: true } });
     if (error) throw error;
     return "code_sent" as const;
   }, [api, refreshMe, sb]);
 
-  const verifyCode = useCallback(async (email: string, code: string) => {
-    const { error } = await (await sb()).auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "email" });
+  const verifyCode = useCallback(async (id: SignInIdentifier, code: string) => {
+    const client = await sb();
+    const { error } = "email" in id
+      ? await client.auth.verifyOtp({ email: id.email, token: code.trim(), type: "email" })
+      : await client.auth.verifyOtp({ phone: id.phone, token: code.trim(), type: "sms" });
     if (error) throw error;
     setSignedIn(true);
     await refreshMe();
@@ -104,7 +109,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSignedIn(false);
   }, [sb]);
 
-  const value = useMemo<Session>(() => ({ api, authMode: AUTH_MODE, signedIn, me, meError, refreshMe, startSignIn, verifyCode, signOut }),
+  const value = useMemo<Session>(() => ({ api, authMode: AUTH_MODE, signInMethods: SIGNIN_METHODS, signedIn, me, meError, refreshMe, startSignIn, verifyCode, signOut }),
     [api, signedIn, me, meError, refreshMe, startSignIn, verifyCode, signOut]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

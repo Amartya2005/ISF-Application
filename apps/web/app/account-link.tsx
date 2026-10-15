@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
-import { signOut, useSessionEmail } from "@/lib/session";
+import { signOut, useSessionIdentity } from "@/lib/session";
 
 export function AccountLink() {
-  const email = useSessionEmail();
+  const email = useSessionIdentity();
   if (email === undefined) return null;
   if (!email) return <Link href="/signin">Sign in</Link>;
   return (

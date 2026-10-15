@@ -6,6 +6,7 @@ import { ACCOUNT_STATUSES, ROLES, type AccountStatus, type AdminUserList, type R
 import { formatIst } from "@sj/client";
 import { api } from "@/lib/session";
 import { can, useMe } from "@/lib/me";
+import { MfaPrompt } from "../mfa-prompt";
 
 const label = (s: string) => s.replace(/_/g, " ");
 const PAGE = 50;
@@ -37,6 +38,7 @@ function Users() {
 
   if (email === undefined) return null;
   if (!email) return <p>Please <Link href="/signin?next=/users">sign in</Link>.</p>;
+  if (me?.mfaRequired) return <MfaPrompt next="/users" />;
   if (me && !can(me, "user.read")) return <p className="notice notice-error">Your account does not have Admin permissions.</p>;
 
   return (

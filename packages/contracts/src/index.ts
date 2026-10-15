@@ -221,6 +221,8 @@ export const MeResponse = z.object({
   roles: z.array(z.enum(ROLES)),
   editionAccess: z.array(z.number().int()),
   permissions: z.array(z.string()),
+  /** True when some of the caller's roles are withheld until they complete multi-factor authentication (aal2). */
+  mfaRequired: z.boolean(),
 });
 export type MeResponse = z.infer<typeof MeResponse>;
 
@@ -320,3 +322,28 @@ export const ActivationIssued = z.object({
   delivery: z.literal("manual"),
 });
 export type ActivationIssued = z.infer<typeof ActivationIssued>;
+
+// ---------------------------------------------------------------- sign-in identifier (TBD-12: email, mobile or both)
+export const SIGN_IN_METHODS = ["email", "phone"] as const;
+export type SignInMethod = (typeof SIGN_IN_METHODS)[number];
+export type SignInIdentifier = { email: string } | { phone: string };
+
+/**
+ * Which one-time-code channels an environment offers, from a comma list such as "email,phone".
+ * The organisers have not yet chosen (TBD-12), so both are allowed unless an environment narrows it.
+ * Unknown values are ignored; an empty or invalid list falls back to email only.
+ */
+export function parseSignInMethods(value: string | undefined | null): SignInMethod[] {
+  if (value === undefined || value === null || value.trim() === "") return ["email", "phone"];
+  const picked = SIGN_IN_METHODS.filter((m) => value.split(",").map((s) => s.trim().toLowerCase()).includes(m));
+  return picked.length ? picked : ["email"];
+}
+
+export const DevSessionRequest = z
+  .object({
+    email: z.string().trim().toLowerCase().email().optional(),
+    phone: z.string().trim().optional(),
+    mfa: z.boolean().optional(),
+  })
+  .refine((b) => !!b.email !== !!b.phone, { message: "Provide either an email or a mobile number" });
+export type DevSessionRequest = z.input<typeof DevSessionRequest>;

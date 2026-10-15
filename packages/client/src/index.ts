@@ -20,6 +20,7 @@ import type {
   RegistrationRequest,
   RegistrationResponse,
   ReleaseResponse,
+  SignInIdentifier,
 } from "@sj/contracts";
 
 export class ApiError extends Error {
@@ -57,7 +58,9 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
 
   return {
     editions: () => req<PublicEdition[]>("GET", "/v1/public/editions"),
-    devSession: (email: string, mfa = false) => req<{ token: string }>("POST", "/v1/dev/session", { email, mfa }),
+    /** Development sign-in only (refused in production): by email or by mobile number. */
+    devSession: (id: string | SignInIdentifier, mfa = false) =>
+      req<{ token: string }>("POST", "/v1/dev/session", { ...(typeof id === "string" ? { email: id } : id), mfa }),
     register: (body: RegistrationRequest) => req<RegistrationResponse>("POST", "/v1/me/registrations", body),
     myApplications: () => req<MyApplicationsResponse>("GET", "/v1/me/applications"),
     myNotifications: () => req<NotificationItem[]>("GET", "/v1/me/notifications"),

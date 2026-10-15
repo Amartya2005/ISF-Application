@@ -6,6 +6,7 @@ import { IMPORT_CATEGORIES, IMPORT_COLUMNS, type ImportBatch, type ImportCategor
 import { ApiError, formatIst } from "@sj/client";
 import { api, authMode } from "@/lib/session";
 import { can, useMe } from "@/lib/me";
+import { MfaPrompt } from "../mfa-prompt";
 
 export default function Imports() {
   const { me, email } = useMe();
@@ -44,6 +45,7 @@ export default function Imports() {
 
   if (email === undefined) return null;
   if (!email) return <p>Please <Link href="/signin?next=/imports">sign in</Link>.</p>;
+  if (me?.mfaRequired) return <MfaPrompt next="/imports" />;
   if (me && !can(me, "import.manage")) return <p className="notice notice-error">Your account does not have Admin permissions.</p>;
   const cols = IMPORT_COLUMNS[category];
 

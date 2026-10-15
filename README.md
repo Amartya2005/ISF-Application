@@ -14,7 +14,7 @@ It is an implementation baseline, not a complete delivery of every feature descr
 
 The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (ADR-001). The 10 delivery phases are listed in [`docs/PHASES.md`](docs/PHASES.md).
 
-> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until the open launch blockers in `docs/EXECUTION_PLAN.md` are resolved.
+> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md) is signed off. **The API enforces this:** with `NODE_ENV=production` it refuses to start until Supabase sign-in, staff MFA, HTTPS-only origins, an approved (non-draft) privacy notice and `LAUNCH_APPROVED=true` are all in place.
 
 ## Project status
 
@@ -42,8 +42,16 @@ The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (AD
   - Admins can grant and revoke roles, deactivate and reactivate accounts; nobody can change their own roles or status;
   - `GET /v1/me`, and a website activation page.
 - **Phase 4, mobile:** an Expo (SDK 57) app for Android and iOS on the same API, with sign-in, activation, a role-aware home screen, startup registration, per-year application status and messages.
+- **Sign-in by email or mobile number** (one-time code by email or SMS) on the website and the app. Which channels are offered is configurable while the decision is open (TBD-12).
+- **Mobile session in the device keychain/keystore**, never in plain storage.
+- **Staff MFA policy:** mandatory in production. Admin, Management and Support complete an authenticator-app step before any privileged action.
+- **Import hardening:** malformed rows (shifted columns, control characters, unreadable text, oversized cells, spreadsheet-formula prefixes) are rejected row by row.
 
-The latest implementation report records 114 API integration tests against PostgreSQL and three browser flows: website + Management, Admin import + activation, and the mobile app at phone size. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
+The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
+
+- 129 API integration tests against PostgreSQL;
+- 4 mobile unit tests;
+- five browser flows: website + Management, Admin import + activation, phone sign-in, the mobile app at phone size, and staff MFA. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
 
 ### Planned / not yet complete
 
@@ -225,6 +233,9 @@ python3 -m pip install playwright
 python3 -m playwright install chromium
 python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots   # website + Management
 python3 scripts/e2e_admin.py /tmp/startup-jathara-shots   # Admin import → activation
+python3 scripts/e2e_phone.py /tmp/startup-jathara-shots   # sign-in by mobile number
+# staff MFA: restart the API with REQUIRE_STAFF_MFA=true, then
+python3 scripts/e2e_mfa.py /tmp/startup-jathara-shots
 # mobile: serve the web build on :8081 and add http://localhost:8081 to CORS_ORIGINS, then
 pnpm --filter @sj/mobile export:web && python3 scripts/e2e_mobile.py /tmp/startup-jathara-shots
 ```
@@ -244,7 +255,9 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `SUPABASE_URL` | Supabase project URL for provider/JWKS verification |
 | `SUPABASE_SERVICE_ROLE_KEY` | **API only, server-side secret.** Reads the authoritative user record to confirm email/phone verification. Never a `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value |
 | `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72; provisional, not specified in the requirements) |
-| `REQUIRE_STAFF_MFA` | Require MFA for privileged staff in supported production configuration |
+| `REQUIRE_STAFF_MFA` | Require MFA (aal2) for Admin, Management and Support. On by default in production and cannot be turned off there. Off locally unless set to `true` |
+| `LAUNCH_APPROVED` | Production start gate. Set to `true` only after `docs/LAUNCH_CHECKLIST.md` is signed off |
+| `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone` (default both; TBD-12) |
 | `CORS_ORIGINS` | Explicit allowlist of trusted web origins |
 | `NEXT_PUBLIC_API_URL` | API URL used by website and console |
 | `NEXT_PUBLIC_AUTH_MODE` | Client auth mode matching the target environment |
@@ -258,7 +271,7 @@ Never commit `.env`, OTPs, tokens, Supabase service-role keys, cloud credentials
 
 - Keep this repository **private until stakeholders approve visibility**; it contains unfinished application code and operational planning information.
 - Do not use the unrelated personal Supabase project for this application. Create project-owned staging and production environments after ownership and budget approval.
-- Before production: verify OTP claims and account linking against real Supabase configuration (implemented and tested against Supabase-shaped data, not yet against a live project), configure staff MFA, approve the privacy notice, run security tests and review role/record-level access.
+- Before production: verify OTP claims and account linking against real Supabase configuration (implemented and tested against Supabase-shaped data, not yet against a live project), approve the privacy notice, run security tests and review role/record-level access. The full list, with the items the API enforces, is in [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md).
 - Keep staging data synthetic. Do not copy production participant records to staging.
 - Application form fields, privacy/retention policy, sign-in identifier, deadline cutoff and deployment ownership are still decision items.
 - No production deployment or app-store release is implied by this repository snapshot.
@@ -283,7 +296,8 @@ The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`]
 - [Architecture (ADR-001)](docs/ARCHITECTURE.md) — the locked architecture.
 - [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
 - [Technical Execution Plan](docs/EXECUTION_PLAN.md) — decisions, data model, APIs, security practices, milestones, backlog and open items.
-- [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement.
+- [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement, reconciled to the current state (§8).
+- [Launch checklist](docs/LAUNCH_CHECKLIST.md) — what must be signed off before production; the API refuses to start in production until then.
 - **Product requirements:** `Startup_Jathara_PRD_v1.0` is the source-of-truth requirements baseline and is maintained separately from this initial code archive.
 
 ## Publishing this repository to GitHub

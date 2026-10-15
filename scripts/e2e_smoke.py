@@ -34,7 +34,7 @@ with sync_playwright() as p:
     shot(web, "1-home")
     web.get_by_role("link", name="Register your startup").first.click()
     web.get_by_role("link", name="Sign in to continue").click()
-    web.get_by_label("Email").fill(email)
+    web.get_by_label("Email", exact=True).fill(email)
     web.get_by_role("button", name="Continue").click()
     web.wait_for_url(f"{WEB}/register")
 

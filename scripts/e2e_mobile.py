@@ -36,7 +36,7 @@ def shot(page, name):
 def sign_in(page, email):
     page.goto(f"{APP}/")
     page.wait_for_url(re.compile(r"/signin"))
-    page.get_by_label("Email").fill(email)
+    page.get_by_label("Email", exact=True).fill(email)
     page.get_by_role("button", name="Continue").click()
 
 
@@ -105,6 +105,20 @@ with sync_playwright() as p:
     expect(page.get_by_text(re.compile("18–20 December 2026"))).to_be_visible()
     expect(page.get_by_role("button", name="Register a startup")).to_have_count(0)   # participants are not applicants
     shot(page, "m5-home-volunteer")
+    ctx.close()
+
+    # ---- sign in with a mobile number instead of an email
+    ctx = browser.new_context(**phone)
+    page = ctx.new_page()
+    page.goto(f"{APP}/")
+    page.wait_for_url(re.compile(r"/signin"))
+    page.get_by_role("radio", name="Sign in with mobile number").click()
+    expect(page.get_by_role("button", name="Continue")).to_be_disabled()
+    page.get_by_label("Mobile number", exact=True).fill(f"8{stamp[-9:]}")
+    page.get_by_role("button", name="Continue").click()
+    page.wait_for_url(re.compile(r"/home"))
+    expect(page.get_by_role("button", name="Register a startup")).to_be_visible()
+    shot(page, "m6-home-phone-sign-in")
     ctx.close()
 
     # ---- staff are pointed to the web console

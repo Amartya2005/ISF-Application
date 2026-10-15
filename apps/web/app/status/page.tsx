@@ -3,12 +3,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { formatIst } from "@sj/client";
 import type { MyApplicationsResponse, NotificationItem } from "@sj/contracts";
-import { api, useSessionEmail } from "@/lib/session";
+import { api, useSessionIdentity } from "@/lib/session";
 
 const LABEL = { under_review: "Under review", selected: "Selected", not_selected: "Not selected" } as const;
 
 export default function StatusPage() {
-  const email = useSessionEmail();
+  const email = useSessionIdentity();
   const [data, setData] = useState<MyApplicationsResponse | null>(null);
   const [notes, setNotes] = useState<NotificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export default function StatusPage() {
     return (
       <div className="card" style={{ maxWidth: 560 }}>
         <h1>Application status</h1>
-        <p>Sign in with the email you used to register.</p>
+        <p>Sign in with the email or mobile number you used to register.</p>
         <Link className="btn btn-primary" href="/signin?next=/status">Sign in</Link>
       </div>
     );

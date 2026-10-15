@@ -3,14 +3,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError } from "@sj/client";
 import type { MeResponse } from "@sj/contracts";
-import { api, useSessionEmail } from "@/lib/session";
+import { api, useSessionIdentity } from "@/lib/session";
 
 /**
  * Account activation for imported participants (FR-IAM-08/10): sign in with the email or mobile the organisers
  * hold for you, then enter the single-use code. The code may also arrive in the link's #fragment (never sent to servers).
  */
 export default function ActivatePage() {
-  const email = useSessionEmail();
+  const email = useSessionIdentity();
   const [me, setMe] = useState<MeResponse | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export default function ActivatePage() {
       <h1>Activate your account</h1>
       {!email ? (
         <>
-          <p>If the event team registered you (as a startup, jury member, volunteer or delegate), sign in with the email they hold for you, then enter your activation code.</p>
+          <p>If the event team registered you (as a startup, jury member, volunteer or delegate), sign in with the email or mobile number they hold for you, then enter your activation code.</p>
           <Link className="btn btn-primary" href="/signin?next=/activate">Sign in</Link>
         </>
       ) : !me ? (
@@ -66,7 +66,7 @@ export default function ActivatePage() {
         <p className="notice notice-error">This account has been deactivated. Contact the event team.</p>
       ) : (
         <p className="notice notice-warn">
-          No account awaiting activation is linked to <strong>{email}</strong>. Sign in with the email the event team holds for you,
+          No account awaiting activation is linked to <strong>{email}</strong>. Sign in with the email or mobile number the event team holds for you,
           or ask them to check your details.
         </p>
       )}

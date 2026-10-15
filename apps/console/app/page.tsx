@@ -10,7 +10,8 @@ export default function Home() {
   const router = useRouter();
   useEffect(() => {
     if (!me) return;
-    if (can(me, "application.read_all")) router.replace("/applications");
+    if (me.mfaRequired) router.replace("/mfa");
+    else if (can(me, "application.read_all")) router.replace("/applications");
     else if (can(me, "user.read")) router.replace("/users");
     else if (can(me, "import.manage")) router.replace("/imports");
   }, [me, router]);
@@ -21,6 +22,7 @@ export default function Home() {
   if (me.account?.status === "pending_activation") {
     return <p className="notice notice-warn">Your account is waiting for activation. Use the activation code you received from the event team on the website’s activation page.</p>;
   }
+  if (me.mfaRequired) return <p className="muted">Opening multi-factor verification…</p>;
   if (!can(me, "application.read_all") && !can(me, "user.read") && !can(me, "import.manage")) {
     return <p className="notice notice-warn">Your account has no console permissions. Ask an administrator if you need access.</p>;
   }

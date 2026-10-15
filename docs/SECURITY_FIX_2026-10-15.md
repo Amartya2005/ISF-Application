@@ -107,7 +107,7 @@ The behaviour is therefore kept. **TBD-19 (open):** should exceeding the limit w
   - **Pending account:** links on verified sign-in but stays locked.
   - **DB triggers:** pending manager cannot decide or release (DC-02); grants and edition access refused for deactivated accounts (`ACCOUNT-STATUS`).
 
-## 5. Verification results
+## 5. Verification results (at the time of the fix, commit b9fe754)
 
 All commands were run on 15 Oct 2026 in the build workspace against a local PostgreSQL 16 server (`scripts/dev-db.sh`, 127.0.0.1:54329). No hosted or production services were used.
 
@@ -143,3 +143,62 @@ pnpm -r build
 # browser e2e: start API (:4000), web (:3000), console (:3001), then
 python3 scripts/e2e_smoke.py /tmp/shots
 ```
+
+## 8. Reconciliation: status as of the CI-green release (later on 15 Oct 2026)
+
+This section brings the report up to date with work done after the fix. Sections 1–7 above are kept as the record of the original fix.
+
+### Findings F1–F7
+
+| # | Status now |
+|---|---|
+| F1 Unverified email claims trusted | ✅ Fixed. The authoritative Admin API record is used, and SMS OTP is now supported end to end, so phone-only identities are handled explicitly rather than incidentally. |
+| F2 Staff-account takeover via linking | ✅ Fixed and tested, including phone-only linking and conflict refusal. |
+| F3 No activation enforcement | ✅ Fixed. The activation flow now exists too (Phase 3): single-use, time-limited codes, hash-only storage, single use enforced by the database. |
+| F4 Unproven identifiers stored at registration | ✅ Fixed. |
+| F5 Linking deactivated or ambiguous accounts | ✅ Fixed. |
+| F6 Weak JWT options | ✅ Fixed. |
+| F7 Edition access for deactivated leaders | ✅ Fixed, with a DB trigger as backstop. |
+
+### Remaining risks (§6), updated
+
+1. **Live Supabase staging validation**: **still open.** This is now launch checklist §B, and production refuses to start without sign-off.
+2. **Admin API dependency at first sign-in**: still open (to be measured in the load test).
+3. **Service-role key handling**: still open, operational; checklist §A.
+4. **Activation flow not built**: ✅ **resolved** (Phase 3).
+5. **Email change after linking not re-synced**: still open, accepted for now.
+6. **Selection-limit policy TBD-19**: still open (warn-only behaviour unchanged).
+7. **Pending accounts' pre-assigned grants**: still inert; the API never loads roles for non-active accounts (tested for all 8 roles).
+
+### Hardening added since the fix
+
+- **Staff MFA in production (FR-IAM-11):**
+  - `REQUIRE_STAFF_MFA` defaults to on in production and the API refuses to start if it is set to `false`.
+  - `GET /v1/me` reports `mfaRequired`, and the console routes staff to a TOTP step (enrol and verify with Supabase).
+  - Every privileged endpoint answers `mfa_required` without aal2. This is verified by API tests and by a browser test against an API with MFA enforced.
+- **Production launch gate.** The API will not start in production until the launch checklist is complete:
+  - Supabase sign-in, MFA on, and HTTPS-only origins are configured;
+  - the privacy notice is no longer a draft;
+  - `LAUNCH_APPROVED=true` has been set.
+- **Native session storage.** Supabase sessions in the mobile app are kept in the device keychain/keystore, split into chunks below the 2 KB per-entry limit. An incomplete write reads as signed out. AsyncStorage was removed.
+- **Import hardening.** Malformed rows are rejected per row, and the column-count result is kept at commit:
+  - values beyond the header (column shift);
+  - control characters;
+  - unreadable (non-UTF-8) text;
+  - cells over 5,000 characters;
+  - spreadsheet-formula prefixes (`=`, `+`, `@`).
+- **Migration runner.** Line-ending differences no longer look like edits; real edits are still refused.
+
+### Verification now
+
+| Check | Result |
+|---|---|
+| `pnpm install --frozen-lockfile` on a clean copy | ✅ (this failed in the first GitHub Actions run because the lockfile was stale; fixed) |
+| `pnpm -r typecheck` | ✅ 7 of 7 packages |
+| `pnpm --filter @sj/api test` (real PostgreSQL) | ✅ 129 of 129, in 9 files |
+| `pnpm --filter @sj/mobile test` | ✅ 4 of 4 (keychain chunking) |
+| `pnpm -r build` plus the mobile web/Android/iOS bundles | ✅ |
+| Browser end-to-end | ✅ `e2e_smoke`, `e2e_admin`, `e2e_phone`, `e2e_mobile`, `e2e_mfa` (with `REQUIRE_STAFF_MFA=true`) |
+| GitHub Actions | ✅ green on `main` (see the Actions tab for the run of this commit) |
+
+Not verified: anything that needs a live Supabase project, an SMS provider, real devices or production infrastructure. Launch checklist §B covers these.

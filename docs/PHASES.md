@@ -15,6 +15,14 @@ All phases build on the locked architecture in [ARCHITECTURE.md](ARCHITECTURE.md
 | 9 | Offline, reports and audit review | Offline cache for event info in the app; reports and controlled exports; admin audit view | FR-OFF-*, FR-RPT-*, AT-34 | Planned · 1–10 Dec |
 | 10 | Hardening and launch | Security review and pen-test fixes, load test, backup restore drill, store submission (needs TBD-36 accounts), production release, freeze | NFR-*, AT-35, AT-36, AT-41 | Planned · 1–15 Dec |
 
+## Hardening after Phase 4 (15 Oct 2026)
+
+- Sign-in by email or mobile number (TBD-12 configurable).
+- Mobile sessions in the device keychain.
+- Staff MFA mandatory in production, with a console step-up.
+- Malformed-row import validation.
+- The production launch gate ([LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md)): production stays closed until live Supabase staging tests, the approved privacy text and the remaining checks are signed off.
+
 ## Rules for every phase
 
 1. Contracts first (`packages/contracts`), then API module and migration, then tests, then UI (console, web, mobile).

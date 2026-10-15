@@ -20,6 +20,16 @@ import type { Principal } from "../../platform/principal.js";
 import { parseCsv } from "./csv.js";
 
 const MAX_ROWS = 5000;
+const MAX_CELL = 5000;
+/** Structural problems found while reading the file; kept with the row so they still apply at commit. */
+const ROW_FIELD = "row";
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+/** Text that a spreadsheet would run as a formula if these records are ever exported again (CSV injection). */
+const FORMULA_START = /^[=+@\t\r]/;
+const FORMULA_CHECKED = ["full_name", "startup_name", "description", "website", "city", "state", "position"];
+
+type RawRow = { rowNumber: number; data: Record<string, string>; issues?: { errors: ImportIssue[]; warnings: ImportIssue[] } };
 /** FR-IMP-07: spreadsheets must never carry passwords. Any password-like column rejects the whole file. */
 const PASSWORD_LIKE = /(pass(word)?|passwd|pwd|secret|\bpin\b|otp)/i;
 const normName = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
@@ -81,19 +91,41 @@ export function readFile(category: ImportCategory, csv: string): { rowNumber: nu
   const rows = body
     .map((cells, i) => ({ rowNumber: i + 2, cells }))   // row 1 is the header, as the Admin sees it in a spreadsheet
     .filter(({ cells }) => cells.some((c) => c.trim() !== ""))
-    .map(({ rowNumber, cells }) => ({
-      rowNumber,
-      data: Object.fromEntries(cols.map((c, i) => [c, (cells[i] ?? "").trim()]).filter(([c]) => c)) as Record<string, string>,
-    }));
+    .map(({ rowNumber, cells }): RawRow => {
+      const errors: ImportIssue[] = [];
+      const warnings: ImportIssue[] = [];
+      // Values beyond the header shift data into the wrong columns: never import such a row.
+      const extra = cells.slice(cols.length).filter((c) => c.trim() !== "");
+      if (extra.length) {
+        errors.push({ field: ROW_FIELD, reason: `Has ${cols.length + extra.length} values but the header has ${cols.length} columns. Check for unquoted commas.` });
+      } else if (cells.length < cols.length) {
+        warnings.push({ field: ROW_FIELD, reason: `Has ${cells.length} values but the header has ${cols.length} columns; the missing ones are treated as empty.` });
+      }
+      return {
+        rowNumber,
+        data: Object.fromEntries(cols.map((c, i) => [c, (cells[i] ?? "").trim()]).filter(([c]) => c)) as Record<string, string>,
+        issues: { errors, warnings },
+      };
+    });
   if (!rows.length) throw new AppError(422, "import_empty", "No data rows", "The file has a header but no data rows.");
   if (rows.length > MAX_ROWS) throw new AppError(422, "import_too_large", "Too many rows", `Split the file: at most ${MAX_ROWS} rows per import.`);
   return rows;
 }
 
 /** Validates rows against each other and against the database. Pure read: nothing is written. */
-export async function analyse(db: Db, category: ImportCategory, rows: { rowNumber: number; data: Record<string, string> }[]): Promise<Analysed[]> {
-  const out: Analysed[] = rows.map(({ rowNumber, data }) => {
-    const errors: ImportIssue[] = [];
+export async function analyse(db: Db, category: ImportCategory, rows: RawRow[]): Promise<Analysed[]> {
+  const out: Analysed[] = rows.map(({ rowNumber, data, issues }) => {
+    const errors: ImportIssue[] = [...(issues?.errors ?? [])];
+    const warnings: ImportIssue[] = [...(issues?.warnings ?? [])];
+    // Malformed values (FR-IMP-02/04): unreadable encoding, control characters, oversized cells, formula prefixes.
+    for (const [field, value] of Object.entries(data)) {
+      if (value.includes("\uFFFD")) errors.push({ field, reason: "Contains characters that could not be read. Save the file as CSV UTF-8 and try again" });
+      else if (CONTROL_CHARS.test(value)) errors.push({ field, reason: "Contains hidden control characters" });
+      if (value.length > MAX_CELL) errors.push({ field, reason: `Longer than ${MAX_CELL} characters` });
+      if (FORMULA_CHECKED.includes(field) && FORMULA_START.test(value)) {
+        errors.push({ field, reason: "Starts with =, + or @, which spreadsheets treat as a formula. Remove that character" });
+      }
+    }
     const fullName = data.full_name ?? "";
     if (!fullName) errors.push({ field: "full_name", reason: "Required" });
     else if (fullName.length > 200) errors.push({ field: "full_name", reason: "Longer than 200 characters" });
@@ -117,7 +149,7 @@ export async function analyse(db: Db, category: ImportCategory, rows: { rowNumbe
       if (data.description && data.description.length > 5000) errors.push({ field: "description", reason: "Longer than 5000 characters" });
     }
     return {
-      rowNumber, data, outcome: errors.length ? "invalid" : "valid", action: null, errors, warnings: [],
+      rowNumber, data, outcome: errors.length ? "invalid" : "valid", action: null, errors, warnings,
       userId: null, email: email && isEmail(email) ? email : null, mobile, role: roleFor(category, data), startupKey,
     };
   });
@@ -312,9 +344,13 @@ export async function commitBatch(sql: Sql, p: Principal, id: string, excludeRow
       select category, edition_id as edition, state from import_batches where id = ${id} for update`;
     if (!b) throw notFound("Import");
     if (b.state !== "previewed") throw new AppError(409, "import_not_open", "Import is not open", `This import is already ${b.state}.`);
-    const stored = await tx<{ rowNumber: number; data: Record<string, string> }[]>`
-      select row_number as "rowNumber", data from import_rows where batch_id = ${id} order by row_number`;
-    const rows = await analyse(tx, b.category, stored);
+    const stored = await tx<{ rowNumber: number; data: Record<string, string>; errors: ImportIssue[]; warnings: ImportIssue[] }[]>`
+      select row_number as "rowNumber", data, errors, warnings from import_rows where batch_id = ${id} order by row_number`;
+    // Value checks are re-run from the stored data; structural (column-count) findings come from the original file.
+    const rows = await analyse(tx, b.category, stored.map((r) => ({
+      rowNumber: r.rowNumber, data: r.data,
+      issues: { errors: r.errors.filter((e) => e.field === ROW_FIELD), warnings: r.warnings.filter((w) => w.field === ROW_FIELD) },
+    })));
 
     // Excluding a startup's leader excludes the whole startup (members cannot be imported without their leader).
     const excluded = new Set(excludeRows);

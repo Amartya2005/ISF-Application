@@ -79,7 +79,7 @@ with sync_playwright() as p:
     web = browser.new_page(viewport={"width": 1100, "height": 900})
     web.goto(f"{WEB}/status")
     web.get_by_role("link", name="Sign in").first.click()
-    web.get_by_label("Email").fill(leader)
+    web.get_by_label("Email", exact=True).fill(leader)
     web.get_by_role("button", name="Continue").click()
     expect(web.get_by_text("Your account is waiting for activation.")).to_be_visible()   # locked until activated
     web.get_by_role("link", name="Activate your account").click()

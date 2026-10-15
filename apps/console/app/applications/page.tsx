@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, formatIst } from "@sj/client";
 import { INTERNAL_STATUSES, type InternalStatus, type ManageApplicationList } from "@sj/contracts";
 import { api, useSessionEmail } from "@/lib/session";
+import { MfaPrompt } from "../mfa-prompt";
 
 const YEARS = [2026, 2027];
 
@@ -28,7 +29,8 @@ function Applications() {
       setLimit(d.selectionLimit?.toString() ?? "");
     } catch (e) {
       setData(null);
-      setError(e instanceof ApiError && e.status === 403 ? "Your account does not have Management permissions." : (e as Error).message);
+      setError(e instanceof ApiError && e.code === "mfa_required" ? "mfa_required"
+        : e instanceof ApiError && e.status === 403 ? "Your account does not have Management permissions." : (e as Error).message);
     }
   }, [year, status]);
 
@@ -67,7 +69,7 @@ function Applications() {
         ))}
       </div>
 
-      {error && <p className="notice notice-error" role="alert">{error}</p>}
+      {error === "mfa_required" ? <MfaPrompt next="/applications" /> : error && <p className="notice notice-error" role="alert">{error}</p>}
       {message && <p className="notice notice-ok">{message}</p>}
 
       {data && (
