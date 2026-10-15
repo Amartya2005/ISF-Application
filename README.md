@@ -334,6 +334,7 @@ The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`]
 
 ## Documentation
 
+- [Technical design and feature guide](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) — how the platform is built and what every feature does; updated with every change.
 - [Architecture (ADR-001)](docs/ARCHITECTURE.md) — the locked architecture.
 - [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
 - [Technical Execution Plan](docs/EXECUTION_PLAN.md) — stack, data model, APIs, security practices, milestones and backlog.

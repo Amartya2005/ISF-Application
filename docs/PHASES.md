@@ -61,5 +61,6 @@ All phases build on the locked architecture in [ARCHITECTURE.md](ARCHITECTURE.md
 1. Contracts first (`packages/contracts`), then API module and migration, then tests, then UI (console, web, mobile).
 2. Each permission and each business rule has an integration test; DB constraints back the critical ones.
 3. Decisions come from [DECISIONS.md](DECISIONS.md). A decision still awaiting approval stays configurable or is labelled as such in the UI and docs; it is never presented as confirmed.
-4. A phase is closed only after typecheck, the full API suite, production builds and the browser end-to-end run all pass.
+4. A phase is closed only after typecheck, the full API suite, production builds and the browser end-to-end run all pass, and the technical design guide is updated.
 5. Any redirect target taken from a URL goes through `safeReturnPath` with an allow-list. Any CSV or spreadsheet export goes through `platform/csv-export.ts`.
+6. Every change updates [TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md](TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) in the same commit (its §0 lists what to update).
