@@ -57,7 +57,7 @@ export async function createTestApp(
   let current = opts.now ?? BEFORE_DEADLINE;
   const config: Config = {
     nodeEnv: "test", databaseUrl: db.url, port: 0, authMode: "dev", devAuthSecret: SECRET,
-    requireStaffMfa: opts.requireStaffMfa ?? false, corsOrigins: opts.corsOrigins ?? [], logLevel: "silent", registrationRateLimit: 1000,
+    requireStaffMfa: opts.requireStaffMfa ?? false, corsOrigins: opts.corsOrigins ?? [], logLevel: "silent", registrationRateLimit: 1000, activationTtlHours: 72, activationRateLimit: 1000,
   };
   const app = await buildApp({
     config, sql: db.sql, verifier: opts.verifier ?? devVerifier(SECRET), identity: opts.identity ?? devIdentityResolver,

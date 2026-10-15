@@ -100,3 +100,11 @@ tr:last-child td { border-bottom: 0; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
 dt { color: var(--muted); }
 dd { margin: 0; }
+
+/* Phase 3: accounts and imports */
+ul.plain { list-style: none; padding: 0; margin: 0 0 12px; display: grid; gap: 8px; }
+.status-pending_activation, .status-duplicate, .status-excluded { color: var(--warn); }
+.status-deactivated, .status-invalid { color: var(--danger); }
+.status-active, .status-created, .status-linked, .status-valid { color: var(--accent); }
+input[type="file"] { font: inherit; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; background: #f3f4f6; padding: 1px 4px; border-radius: 4px; }

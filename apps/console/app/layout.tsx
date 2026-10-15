@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
-import { Account } from "./account";
+import { Nav } from "./nav";
 
 export const metadata: Metadata = { title: "Startup Jathara Console", robots: { index: false, follow: false } };
 
@@ -11,11 +11,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="site-header">
           <div className="container">
-            <Link href="/applications" className="brand">Startup Jathara <span>Console</span></Link>
-            <nav className="nav" aria-label="Console">
-              <Link href="/applications">Applications</Link>
-              <Account />
-            </nav>
+            <Link href="/" className="brand">Startup Jathara <span>Console</span></Link>
+            <Nav />
           </div>
         </header>
         <main className="container">{children}</main>

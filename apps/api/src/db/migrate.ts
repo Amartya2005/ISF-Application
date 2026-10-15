@@ -15,6 +15,8 @@ export function findMigrationsDir(start = path.dirname(fileURLToPath(import.meta
   }
 }
 
+const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
+
 export async function migrate(sql: Sql, dir = process.env.MIGRATIONS_DIR ?? findMigrationsDir()): Promise<string[]> {
   await sql`create table if not exists schema_migrations (
     version text primary key, checksum text not null, applied_at timestamptz not null default now())`;
@@ -22,12 +24,18 @@ export async function migrate(sql: Sql, dir = process.env.MIGRATIONS_DIR ?? find
   const files = readdirSync(dir).filter((f) => /^\d{4}_.+\.sql$/.test(f)).sort();
   const ran: string[] = [];
   for (const file of files) {
-    const body = readFileSync(path.join(dir, file), "utf8");
-    const checksum = createHash("sha256").update(body).digest("hex");
+    // Line endings are normalised so a checkout with CRLF endings (Windows, git autocrlf) is not mistaken for an edit.
+    const body = readFileSync(path.join(dir, file), "utf8").replace(/\r\n/g, "\n");
+    const checksum = sha256(body);
     const prev = applied.get(file);
     if (prev) {
-      if (prev !== checksum) throw new Error(`Migration ${file} was modified after being applied; add a new migration instead`);
-      continue;
+      if (prev === checksum) continue;
+      if (prev === sha256(body.replace(/\n/g, "\r\n"))) {
+        // Recorded from a CRLF copy of the same content by an earlier runner: same migration, re-record normalised.
+        await sql`update schema_migrations set checksum = ${checksum} where version = ${file}`;
+        continue;
+      }
+      throw new Error(`Migration ${file} was modified after being applied; add a new migration instead`);
     }
     await sql.begin(async (tx) => {
       await tx.unsafe(body);

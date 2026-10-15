@@ -5,7 +5,7 @@ import { authMode, startSignIn, verifyCode } from "@/lib/session";
 
 function Form() {
   const router = useRouter();
-  const next = useSearchParams().get("next") ?? "/applications";
+  const next = useSearchParams().get("next") ?? "/";
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [stage, setStage] = useState<"email" | "code">("email");

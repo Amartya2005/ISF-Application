@@ -1,12 +1,20 @@
 # Startup Jathara Management Platform
 
-**Zeny2Labs · M1 implementation snapshot · Review before production use**
+**Zeny2Labs · Phases 1–4 implementation snapshot · Review before production use**
 
 The Startup Jathara Management Platform is being built to support **Startup Jathara @ Dandakaranya**, organised by GIET University in association with the International Startup Foundation (ISF), at GIET University, Gunupur, Odisha. The event is scheduled for **18–20 December 2026**, with a pre-event day on **17 December 2026**.
 
-This repository contains the first working vertical slice: **startup registration → Management review → selection decision release → applicant status**. It is an implementation baseline, not a complete delivery of every feature described in the PRD.
+This repository contains **Phases 1–4 of 10**:
 
-> **Not production-ready.** Real Supabase authentication, final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until the open launch blockers in `docs/EXECUTION_PLAN.md` are resolved.
+- the registration vertical slice: **startup registration → Management review → selection decision release → applicant status**;
+- Admin bulk import, account activation and role administration;
+- the Android/iOS app foundation.
+
+It is an implementation baseline, not a complete delivery of every feature described in the PRD.
+
+The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (ADR-001). The 10 delivery phases are listed in [`docs/PHASES.md`](docs/PHASES.md).
+
+> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until the open launch blockers in `docs/EXECUTION_PLAN.md` are resolved.
 
 ## Project status
 
@@ -22,18 +30,30 @@ This repository contains the first working vertical slice: **startup registratio
 - Edition access granted as part of a released selection decision.
 - Shared Zod contracts, a typed API client, SQL migrations, seed data and CI workflow.
 - API integration tests and a browser end-to-end smoke test.
+- **Security hardening** (see [`docs/SECURITY_FIX_2026-10-15.md`](docs/SECURITY_FIX_2026-10-15.md)):
+  - email/phone verification is read from the authoritative Supabase user record, never from editable token claims;
+  - pre-created accounts are linked to a sign-in only through a verified email or phone (fail-closed);
+  - account activation status is enforced server-side for all roles.
+- **Phase 3, Admin:**
+  - CSV import of predefined startups, jury, volunteers and delegates, run as validate → preview → commit;
+  - errors are reported by row and field; duplicates and shared mobile numbers are detected; password columns are rejected;
+  - imported accounts start as pending activation;
+  - activation codes are single-use and time-limited, and only their hash is stored;
+  - Admins can grant and revoke roles, deactivate and reactivate accounts; nobody can change their own roles or status;
+  - `GET /v1/me`, and a website activation page.
+- **Phase 4, mobile:** an Expo (SDK 57) app for Android and iOS on the same API, with sign-in, activation, a role-aware home screen, startup registration, per-year application status and messages.
 
-The initial implementation report records 47 API integration tests against PostgreSQL and a browser flow. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
+The latest implementation report records 114 API integration tests against PostgreSQL and three browser flows: website + Management, Admin import + activation, and the mobile app at phone size. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
 
 ### Planned / not yet complete
 
-- Admin import and account-management workflows.
-- Production identity configuration and complete account-activation lifecycle.
+- Production identity configuration (Supabase staging/production) and an automated delivery channel for activation codes (TBD-13; codes are handed over manually for now).
+- Final import column layout (TBD-41). The current CSV template is provisional.
 - AI-assisted startup ranking and criteria management.
 - Jury scoring UI and workflow.
 - Random volunteer assignment and reassignment UI.
 - Event content, notices and push notifications.
-- Native Android/iOS app (Expo).
+- Event features in the mobile app (schedule, venues, notices, push notifications, Help Desk), and app-store builds (needs Apple/Google accounts, TBD-36).
 - AI Help Desk, WhatsApp integration, customer-support workflows and emergency escalation.
 - Production deployment, load/security testing and disaster-recovery validation.
 
@@ -70,13 +90,15 @@ The API is a TypeScript modular monolith. PostgreSQL migrations are the schema s
 apps/
   api/                  Fastify API, domain modules, SQL access and tests
   web/                  Public website and applicant pages (Next.js)
-  console/              Management console (Next.js)
-  mobile/               Planned Expo application; not implemented in M1
+  console/              Admin / Management console (Next.js); sections shown by permission
+  mobile/               Android + iOS app (Expo SDK 57, Expo Router)
 packages/
   contracts/            Shared Zod schemas and TypeScript types
   client/               Typed API client
   web-session/          Browser session and auth adapter
 db/migrations/           Forward-only SQL migrations
+docs/ARCHITECTURE.md     ADR-001: the locked architecture
+docs/PHASES.md           The 10 delivery phases and their status
 docs/EXECUTION_PLAN.md   Stack, API boundaries, schema, backlog, risks and TBDs
 scripts/                 Local database and browser-test helpers
 .github/workflows/       Continuous integration workflow
@@ -91,7 +113,7 @@ scripts/                 Local database and browser-test helpers
 | API | Fastify 5, Zod validation, SQL-first migrations |
 | Database | PostgreSQL 16+ |
 | Website and console | Next.js 16 / React 19 |
-| Mobile (planned) | Expo / React Native |
+| Mobile | Expo SDK 57 / React Native 0.86, Expo Router; one app for Android and iOS |
 | Production identity (planned) | Supabase Auth OTP; API-enforced authorisation |
 | Background jobs (planned) | pg-boss with PostgreSQL |
 | Proposed hosting | Supabase in Mumbai, Cloud Run in Mumbai, Vercel in Mumbai; budget/account ownership TBD |
@@ -165,11 +187,24 @@ pnpm dev:web
 pnpm dev:console
 ```
 
+Optional, for the mobile app:
+
+```bash
+pnpm dev:mobile
+```
+
 Default local URLs:
 
 - Website: <http://localhost:3000>
-- Management console: <http://localhost:3001>
+- Console: <http://localhost:3001> (`manager@dev.local` sees Applications; `admin@dev.local` sees Accounts and Imports)
 - API: <http://localhost:4000>
+
+### 5. Run the mobile app on a phone (optional)
+
+1. Install **Expo Go** (Play Store / App Store) on a phone that is on the same Wi-Fi as your computer.
+2. Run `pnpm dev:mobile` and scan the QR code.
+3. In development the app calls the API on the computer that is running Expo, on port 4000. If Windows Firewall asks, allow Node.js on private networks. You can also set `EXPO_PUBLIC_API_URL=http://<computer-ip>:4000` yourself.
+4. To act as an imported participant, import them in the console under **Imports**, issue a code under **Accounts**, and enter that code in the app.
 
 Use the development accounts above to exercise the local workflow. Local development auth bypasses a real identity provider; never expose these services publicly.
 
@@ -188,7 +223,10 @@ For browser end-to-end verification, start the API, website and console, install
 ```bash
 python3 -m pip install playwright
 python3 -m playwright install chromium
-python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots
+python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots   # website + Management
+python3 scripts/e2e_admin.py /tmp/startup-jathara-shots   # Admin import → activation
+# mobile: serve the web build on :8081 and add http://localhost:8081 to CORS_ORIGINS, then
+pnpm --filter @sj/mobile export:web && python3 scripts/e2e_mobile.py /tmp/startup-jathara-shots
 ```
 
 CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) to install dependencies, typecheck, run API integration tests against PostgreSQL and build the workspaces.
@@ -204,12 +242,15 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `AUTH_MODE` | `dev` locally; `supabase` only after real provider setup |
 | `DEV_AUTH_SECRET` | Local-only development signing secret; use a unique secret locally |
 | `SUPABASE_URL` | Supabase project URL for provider/JWKS verification |
+| `SUPABASE_SERVICE_ROLE_KEY` | **API only, server-side secret.** Reads the authoritative user record to confirm email/phone verification. Never a `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value |
+| `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72; provisional, not specified in the requirements) |
 | `REQUIRE_STAFF_MFA` | Require MFA for privileged staff in supported production configuration |
 | `CORS_ORIGINS` | Explicit allowlist of trusted web origins |
 | `NEXT_PUBLIC_API_URL` | API URL used by website and console |
 | `NEXT_PUBLIC_AUTH_MODE` | Client auth mode matching the target environment |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL for browser sign-in, when configured |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase publishable/anon key; never put a service-role key here |
+| `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_SUPABASE_*` | Mobile app settings, inlined at build time (public values only) |
 
 Never commit `.env`, OTPs, tokens, Supabase service-role keys, cloud credentials or participant spreadsheets. Only `.env.example` belongs in source control.
 
@@ -217,7 +258,7 @@ Never commit `.env`, OTPs, tokens, Supabase service-role keys, cloud credentials
 
 - Keep this repository **private until stakeholders approve visibility**; it contains unfinished application code and operational planning information.
 - Do not use the unrelated personal Supabase project for this application. Create project-owned staging and production environments after ownership and budget approval.
-- Before production: verify OTP claims and account linking against real Supabase configuration, enforce account activation server-side, configure staff MFA, approve the privacy notice, run security tests and review role/record-level access.
+- Before production: verify OTP claims and account linking against real Supabase configuration (implemented and tested against Supabase-shaped data, not yet against a live project), configure staff MFA, approve the privacy notice, run security tests and review role/record-level access.
 - Keep staging data synthetic. Do not copy production participant records to staging.
 - Application form fields, privacy/retention policy, sign-in identifier, deadline cutoff and deployment ownership are still decision items.
 - No production deployment or app-store release is implied by this repository snapshot.
@@ -235,11 +276,14 @@ See [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) for P0 launch blockers and 
 7. **M7 — Help Desk and support:** in-app/WhatsApp Help Desk, ticketing and emergency workflow.
 8. **M8 — Production readiness:** security review, load tests, backups/restore drill, monitoring and release.
 
-Phase targets depend on stakeholder decisions, team capacity, vendor onboarding and app-store review. See the execution plan for current dependencies and schedule risks.
+The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`](docs/PHASES.md). Phase targets depend on stakeholder decisions, team capacity, vendor onboarding and app-store review. See the execution plan for current dependencies and schedule risks.
 
 ## Documentation
 
+- [Architecture (ADR-001)](docs/ARCHITECTURE.md) — the locked architecture.
+- [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
 - [Technical Execution Plan](docs/EXECUTION_PLAN.md) — decisions, data model, APIs, security practices, milestones, backlog and open items.
+- [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement.
 - **Product requirements:** `Startup_Jathara_PRD_v1.0` is the source-of-truth requirements baseline and is maintained separately from this initial code archive.
 
 ## Publishing this repository to GitHub

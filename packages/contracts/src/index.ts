@@ -208,3 +208,115 @@ export const NotificationItem = z.object({
   readAt: z.string().nullable(),
 });
 export type NotificationItem = z.infer<typeof NotificationItem>;
+
+// ---------------------------------------------------------------- my account (all interfaces)
+export const ACCOUNT_STATUSES = ["pending_activation", "active", "deactivated"] as const;
+export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
+
+/** Who the caller is. Pending accounts get `status` only: no roles or access until activated. */
+export const MeResponse = z.object({
+  account: z
+    .object({ id: z.string(), email: z.string().nullable(), fullName: z.string(), mobile: z.string().nullable(), status: z.enum(ACCOUNT_STATUSES) })
+    .nullable(),
+  roles: z.array(z.enum(ROLES)),
+  editionAccess: z.array(z.number().int()),
+  permissions: z.array(z.string()),
+});
+export type MeResponse = z.infer<typeof MeResponse>;
+
+export const ActivationRequest = z.object({ token: z.string().trim().min(20).max(200) });
+export type ActivationRequest = z.infer<typeof ActivationRequest>;
+
+// ---------------------------------------------------------------- bulk import (PRD §5, FR-IMP-*)
+export const IMPORT_CATEGORIES = ["startups", "jury", "volunteers", "delegates"] as const;
+export type ImportCategory = (typeof IMPORT_CATEGORIES)[number];
+
+/**
+ * PROVISIONAL CSV columns until the organising team's data format is agreed (TBD-41).
+ * Every row: full_name, plus email and/or mobile (sign-in identifier is TBD-12). Startups add startup_name and
+ * position (leader | member), plus optional startup details. No password column is ever accepted (FR-IMP-07).
+ */
+export const IMPORT_COLUMNS: Record<ImportCategory, { required: string[]; optional: string[] }> = {
+  startups: { required: ["startup_name", "position", "full_name"], optional: ["email", "mobile", "description", "website", "city", "state"] },
+  jury: { required: ["full_name"], optional: ["email", "mobile"] },
+  volunteers: { required: ["full_name"], optional: ["email", "mobile"] },
+  delegates: { required: ["full_name"], optional: ["email", "mobile"] },
+};
+
+export const ImportPreviewRequest = z.object({
+  category: z.enum(IMPORT_CATEGORIES),
+  edition: z.number().int().min(2026).max(2100),
+  fileName: z.string().trim().min(1).max(200),
+  /** UTF-8 CSV text with a header row. */
+  csv: z.string().min(1).max(2_000_000),
+});
+export type ImportPreviewRequest = z.infer<typeof ImportPreviewRequest>;
+
+export const ImportIssue = z.object({ field: z.string(), reason: z.string() });
+export type ImportIssue = z.infer<typeof ImportIssue>;
+
+export const ImportRow = z.object({
+  rowNumber: z.number().int(),
+  data: z.record(z.string(), z.string()),
+  outcome: z.enum(["valid", "invalid", "duplicate", "created", "linked", "excluded"]),
+  action: z.enum(["create", "link"]).nullable(),
+  errors: z.array(ImportIssue),
+  warnings: z.array(ImportIssue),
+});
+export type ImportRow = z.infer<typeof ImportRow>;
+
+export const ImportBatch = z.object({
+  id: z.string(),
+  category: z.enum(IMPORT_CATEGORIES),
+  edition: z.number().int(),
+  fileName: z.string(),
+  fileSha256: z.string(),
+  state: z.enum(["previewed", "committed", "discarded"]),
+  uploadedBy: z.string(),
+  uploadedAt: z.string(),
+  committedAt: z.string().nullable(),
+  rowCount: z.number().int(),
+  errorCount: z.number().int(),
+  summary: z.record(z.string(), z.number()),
+});
+export type ImportBatch = z.infer<typeof ImportBatch>;
+
+export const ImportBatchDetail = ImportBatch.extend({ rows: z.array(ImportRow) });
+export type ImportBatchDetail = z.infer<typeof ImportBatchDetail>;
+
+export const ImportCommitRequest = z.object({
+  /** Row numbers the Admin chose to leave out of this commit. */
+  excludeRows: z.array(z.number().int().positive()).max(10000).optional(),
+});
+export type ImportCommitRequest = z.infer<typeof ImportCommitRequest>;
+
+// ---------------------------------------------------------------- account administration (FR-IAM-05, -06, -09)
+export const AdminUser = z.object({
+  id: z.string(),
+  email: z.string().nullable(),
+  fullName: z.string(),
+  mobile: z.string().nullable(),
+  status: z.enum(ACCOUNT_STATUSES),
+  signInLinked: z.boolean(),
+  createdAt: z.string(),
+  activatedAt: z.string().nullable(),
+  roles: z.array(z.object({ grantId: z.string(), role: z.enum(ROLES), edition: z.number().int().nullable(), grantedAt: z.string() })),
+  editionAccess: z.array(z.object({ edition: z.number().int(), source: z.enum(["predefined", "selected"]) })),
+  activation: z.object({ issuedAt: z.string(), expiresAt: z.string() }).nullable(),
+});
+export type AdminUser = z.infer<typeof AdminUser>;
+
+export const AdminUserList = z.object({ total: z.number().int(), items: z.array(AdminUser) });
+export type AdminUserList = z.infer<typeof AdminUserList>;
+
+export const RoleGrantRequest = z.object({ role: z.enum(ROLES), edition: z.number().int().min(2026).max(2100).nullable().optional() });
+export type RoleGrantRequest = z.infer<typeof RoleGrantRequest>;
+
+export const ActivationIssued = z.object({
+  /** Shown once. Only its hash is stored. */
+  token: z.string(),
+  expiresAt: z.string(),
+  /** Delivery channel is TBD-13: until then the Admin hands this to the participant. */
+  delivery: z.literal("manual"),
+});
+export type ActivationIssued = z.infer<typeof ActivationIssued>;

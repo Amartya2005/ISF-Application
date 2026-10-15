@@ -86,6 +86,9 @@ with sync_playwright() as p:
     adm.goto(f"{CONSOLE}/signin")
     adm.get_by_label("Work email").fill("admin@dev.local")
     adm.get_by_role("button", name="Continue").click()
+    adm.wait_for_url(re.compile(r"/users"))                                   # admin lands on Accounts, not Applications
+    expect(adm.get_by_role("link", name="Applications")).to_have_count(0)
+    adm.goto(f"{CONSOLE}/applications")
     expect(adm.get_by_text("Your account does not have Management permissions.")).to_be_visible()
 
     browser.close()

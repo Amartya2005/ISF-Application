@@ -1,6 +1,15 @@
 // Typed HTTP client for the Startup Jathara API, shared by the website, console and mobile app.
 import type {
+  AccountStatus,
+  ActivationIssued,
+  AdminUser,
+  AdminUserList,
   DecisionRequest,
+  ImportBatch,
+  ImportBatchDetail,
+  ImportCategory,
+  MeResponse,
+  Role,
   InternalStatus,
   ManageApplication,
   ManageApplicationList,
@@ -52,6 +61,26 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
     register: (body: RegistrationRequest) => req<RegistrationResponse>("POST", "/v1/me/registrations", body),
     myApplications: () => req<MyApplicationsResponse>("GET", "/v1/me/applications"),
     myNotifications: () => req<NotificationItem[]>("GET", "/v1/me/notifications"),
+    me: () => req<MeResponse>("GET", "/v1/me"),
+    activate: (token: string) => req<MeResponse>("POST", "/v1/me/activation", { token }),
+    admin: {
+      users: (f: { q?: string; role?: Role; status?: AccountStatus; limit?: number; offset?: number } = {}) => {
+        const p = new URLSearchParams(Object.entries(f).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+        return req<AdminUserList>("GET", `/v1/admin/users${p.size ? `?${p}` : ""}`);
+      },
+      user: (id: string) => req<AdminUser>("GET", `/v1/admin/users/${id}`),
+      grantRole: (id: string, role: Role, edition: number | null = null) => req<AdminUser>("POST", `/v1/admin/users/${id}/roles`, { role, edition }),
+      revokeRole: (id: string, grantId: string) => req<AdminUser>("DELETE", `/v1/admin/users/${id}/roles/${grantId}`),
+      deactivate: (id: string) => req<AdminUser>("POST", `/v1/admin/users/${id}/deactivate`),
+      reactivate: (id: string) => req<AdminUser>("POST", `/v1/admin/users/${id}/reactivate`),
+      issueActivation: (id: string) => req<ActivationIssued>("POST", `/v1/admin/users/${id}/activation`),
+      imports: () => req<ImportBatch[]>("GET", "/v1/admin/imports"),
+      importBatch: (id: string) => req<ImportBatchDetail>("GET", `/v1/admin/imports/${id}`),
+      previewImport: (body: { category: ImportCategory; edition: number; fileName: string; csv: string }) =>
+        req<ImportBatchDetail>("POST", "/v1/admin/imports", body),
+      commitImport: (id: string, excludeRows: number[] = []) => req<ImportBatchDetail>("POST", `/v1/admin/imports/${id}/commit`, { excludeRows }),
+      discardImport: (id: string) => req<ImportBatch>("POST", `/v1/admin/imports/${id}/discard`),
+    },
     manage: {
       list: (year: number, status?: InternalStatus) =>
         req<ManageApplicationList>("GET", `/v1/manage/editions/${year}/applications${status ? `?status=${status}` : ""}`),

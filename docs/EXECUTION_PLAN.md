@@ -232,7 +232,25 @@ The registration website is never descoped.
 | TBD-35 | AI, WhatsApp, email and SMS vendors (incl. DLT registration for SMS) | 25 Oct | M3, M7 |
 | TBD-07 / 27 / 28 | Emergency contacts, escalation targets, support staffing | 20 Nov | M7 |
 
-## 10. First vertical slice (M1) — status in this repo
+## 10. Status in this repo
+
+The 10-phase delivery breakdown and its status are in [PHASES.md](PHASES.md). Architecture is locked by [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001).
+
+- **Phase 3, Admin imports and accounts:**
+  - CSV import runs validate → preview → commit.
+  - Duplicates are detected within the file and against existing records. Shared mobile numbers are flagged. Password columns are rejected.
+  - Imported accounts start as `pending_activation`, with edition-scoped roles and access.
+  - Activation codes are single-use and time-limited; only their hash is stored. The delivery channel is TBD-13, so Admins hand codes over manually for now.
+  - Admins can grant and revoke roles, deactivate and reactivate accounts. Nobody can change their own roles or status.
+- **Phase 4, mobile app:**
+  - Expo app for Android and iOS: sign-in, activation, role-aware home, registration, per-year status and messages.
+  - It compiles for Android, iOS and web, and runs end-to-end in a phone-sized browser.
+- **Provisional items:**
+  - Import column layout (TBD-41).
+  - Activation validity period: 72 h by default, configurable.
+  - Admin-to-participant delivery of codes (TBD-13).
+
+### First vertical slice (M1)
 
 Flow: website form → `POST /v1/me/registrations` → Postgres → console list → decision draft → release → applicant status.
 Pinned versions: Node 22, Fastify 5.12, Next.js 16.4, React 19.3, Zod 4.6, TypeScript 5.9, PostgreSQL 16.
@@ -251,7 +269,7 @@ Pinned versions: Node 22, Fastify 5.12, Next.js 16.4, React 19.3, Zod 4.6, TypeS
 | Audit trail; volunteer one-to-one, ticket-status and WhatsApp-identity constraints | ✅ AT-34 (slice), DC-04…08, DC-11, DC-13 |
 | Staff MFA enforcement switch; account linking only via identifiers proven by the IdP record; activation enforced server-side for all 8 roles | ✅ `auth.test.ts`, `security.test.ts` (security fix, 15 Oct 2026) |
 
-Totals: 81 API integration tests on real Postgres (incl. 35 security regression tests, see `docs/SECURITY_FIX_2026-10-15.md`), plus a browser run through the real website and console.
+Totals: 111 API integration tests on real Postgres. These include 35 security regression tests (see `docs/SECURITY_FIX_2026-10-15.md`) and 30 Phase 3 tests. There are also three browser end-to-end runs: website + Management, Admin import + activation, and the mobile app.
 
 **Remaining before the slice can go live** (all need §9 decisions or accounts):
 - Supabase project and real OTP sign-in (B-06).

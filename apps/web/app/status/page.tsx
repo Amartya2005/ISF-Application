@@ -30,7 +30,11 @@ export default function StatusPage() {
       </div>
     );
   }
-  if (error) return <p className="notice notice-error">{error}</p>;
+  if (error) {
+    return error.includes("not been activated")
+      ? <p className="notice notice-warn">Your account is waiting for activation. <Link href="/activate">Activate your account</Link>.</p>
+      : <p className="notice notice-error">{error}</p>;
+  }
   if (!data) return <p className="muted">Loading…</p>;
   if (!data.startup) {
     return (

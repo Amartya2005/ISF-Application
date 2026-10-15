@@ -67,7 +67,7 @@ async function linkPreCreatedAccount(db: Db, claims: Claims, v: VerifiedIdentity
 export async function resolvePrincipal(
   db: Db,
   claims: Claims,
-  opts: { requireStaffMfa: boolean; identity: IdentityResolver },
+  opts: { requireStaffMfa: boolean; identity: IdentityResolver; allowPending?: boolean },
 ): Promise<Principal> {
   const bySubject = () => db<Account[]>`select ${ACCOUNT_COLUMNS(db)} from user_accounts where auth_subject = ${claims.sub}`;
   let account: Account | null = (await bySubject())[0] ?? null;
@@ -81,6 +81,8 @@ export async function resolvePrincipal(
   if (account) {
     if (account.status === "deactivated") throw forbidden("This account has been deactivated", "account_deactivated");
     if (account.status === "pending_activation") {
+      // Only the activation and "who am I" routes accept a pending account, and they get no roles or access.
+      if (opts.allowPending) return { claims, account, verified, roles: new Set(), editionAccess: new Set(), mfaSatisfied: false };
       throw forbidden("This account has not been activated yet. Use your activation invitation to continue.", "account_not_active");
     }
     if (account.status !== "active") throw forbidden("This account is not active", "account_not_active");   // unknown state: fail closed
@@ -140,7 +142,7 @@ export function requireEditionAccess() {
 export function authenticate(
   verify: (token: string) => Promise<Claims>,
   db: Db,
-  opts: { requireStaffMfa: boolean; identity: IdentityResolver },
+  opts: { requireStaffMfa: boolean; identity: IdentityResolver; allowPending?: boolean },
 ) {
   return async (req: FastifyRequest) => {
     const token = bearer(req.headers.authorization);

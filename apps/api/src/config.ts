@@ -16,6 +16,10 @@ const Env = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:3000,http://localhost:3001"),
   LOG_LEVEL: z.string().default("info"),
   REGISTRATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+  // Activation codes are single-use and time-limited (FR-IAM-10). The validity period is not specified in the
+  // requirements; 72 hours is a provisional default the organisers can change.
+  ACTIVATION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
+  ACTIVATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
 });
 
 export type Config = {
@@ -30,6 +34,8 @@ export type Config = {
   corsOrigins: string[];
   logLevel: string;
   registrationRateLimit: number;
+  activationTtlHours: number;
+  activationRateLimit: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -53,5 +59,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     corsOrigins: e.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean),
     logLevel: e.LOG_LEVEL,
     registrationRateLimit: e.REGISTRATION_RATE_LIMIT,
+    activationTtlHours: e.ACTIVATION_TTL_HOURS,
+    activationRateLimit: e.ACTIVATION_RATE_LIMIT,
   };
 }
