@@ -12,7 +12,8 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 
 ## A. Accounts and environments (TBD-36, TBD-46)
 
-- [ ] Organisation-owned Supabase **staging** and **production** projects (ap-south-1). Never use any personal project.
+- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0006 applied, Data API closed (see [STAGING.md](STAGING.md)). Done 15 Oct 2026.
+- [ ] Organisation-owned Supabase **production** project (ap-south-1) on a paid plan with backups/PITR (budget TBD-46). Never use any personal project.
 - [ ] Cloud, domain, Vercel, GitHub organisation, and Apple/Google store accounts are owned by the organisers.
 - [ ] Secrets are stored in the secret manager. `SUPABASE_SERVICE_ROLE_KEY` goes to the API service only, never to any `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value.
 - [ ] Repository visibility is decided. It is currently public; the README recommends private until approval.
