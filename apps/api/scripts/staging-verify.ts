@@ -85,6 +85,18 @@ async function main() {
       return algs.join(", ");
     });
 
+    await check("Data API is closed: the public key can neither read nor write our tables (migration 0005)", async () => {
+      for (const table of ["user_accounts", "applications", "event_editions", "activation_tokens"]) {
+        const read = await fetch(`${url}/rest/v1/${table}?select=*&limit=1`, { headers: { apikey: anonKey } });
+        const rows = read.ok ? ((await read.json()) as unknown[]) : [];
+        assert(rows.length === 0, `${table}: ${rows.length} row(s) readable with the public key`);
+        const write = await fetch(`${url}/rest/v1/${table}`, {
+          method: "POST", headers: { apikey: anonKey, "content-type": "application/json", prefer: "return=minimal" }, body: "{}",
+        });
+        assert(!write.ok, `${table}: insert with the public key returned ${write.status}`);
+      }
+    });
+
     let applicant: Awaited<ReturnType<typeof emailOtpSession>> | null = null;
     await check("Email OTP: a real session is accepted by the API (new applicant, no account yet)", async () => {
       applicant = await emailOtpSession(`sj-staging-${stamp}@example.com`);
