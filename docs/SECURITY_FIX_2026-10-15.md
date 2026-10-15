@@ -210,3 +210,14 @@ Not verified: anything that needs a live Supabase project, an SMS provider, real
 | **Open redirect** after sign-in or MFA. The `next` parameter was passed straight to `router.push`, `router.replace` and `window.location.assign` on the website sign-in, console sign-in and console MFA pages. | ✅ Fixed. All three now use `safeReturnPath`, which allows only approved internal paths. Absolute, `//host`, backslash, control-character, encoded-slash and dot-segment variants fall back to a safe page. 18 tests. |
 | **Formula injection:** a leading `-` was not rejected. | ✅ Import validation now rejects `=`, `+`, `-`, `@`, tab and carriage return, and their full-width forms, in exportable text fields (regression test included). Mobile numbers and emails keep their own rules. `platform/csv-export.ts` escapes every exported cell; it is tested, and its use for all future exports is a project rule. |
 | **Real-device and live-Supabase validation.** | ⏳ Still open by design. `staging:verify` (automated, tested guards, RFC 6238 TOTP) and DEVICE_TEST_PROTOCOL.md (D1–D12) are ready to run once an organiser-owned staging project exists. Production stays closed until they are signed off (launch gate). |
+
+### Second review follow-up (15 Oct 2026)
+
+| Item | Resolution |
+|---|---|
+| **Critical:** `staging:verify` could delete a pre-existing staff user. Disposability was inferred from the email prefix; the SMS check also deleted whichever user owned the test number. | ✅ Fixed. Cleanup now deletes only users the run **provably** created: a successful `createUser`, or a new user on a run-generated address or an unused test number, created after the run started (`CreatedUsers` in `scripts/staging-guard.ts`; 6 tests). Staff accounts are never recorded. The verifier had **not** been run against any project before the fix. |
+| **High:** staging-only protection relied on a confirmation phrase and a single blocked ref. | ✅ Fixed. `STAGING_SUPABASE_PROJECT_REF` must be on the reviewed allow-list `APPROVED_STAGING_REFS` (currently only `chiafggvergjwliqvlwv`), and the URL must be exactly `https://<ref>.supabase.co`. The confirmation phrase and the blocked list remain as extra safeguards. 12 refusal tests, plus a live check that wrong targets abort before any network call. |
+| Broken device-protocol link | ✅ Links between docs now use repo-root paths (`/docs/...`), which resolve on GitHub and from copies outside `docs/`. |
+| Clarifications | ✅ The checklist states that automated OTP checks prove the session flow, not email, carrier or DLT delivery (manual items D1/D2 were added). It also states that the launch gate enforces configuration only, and that `LAUNCH_APPROVED` is a tightly controlled human attestation. |
+
+Launch status: **NOT APPROVED.**

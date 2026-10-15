@@ -23,4 +23,18 @@ Also in the ISF organisation: "Amartya2005's Project" (Sydney, ap-southeast-2) w
    - MFA: TOTP enabled;
    - for the device protocol run, temporarily shorten the JWT expiry to 300 s.
 3. **Host the staging API** (AUTH_MODE=supabase, REQUIRE_STAFF_MFA=true, NODE_ENV=staging), plus the website and console with `NEXT_PUBLIC_AUTH_MODE=supabase` and the URL and key above. Hosting is TBD-46.
-4. Seed one Management account (and one never-signed-in Management account for the linking-attack check), then run `pnpm --filter @sj/api staging:verify` and the device protocol.
+4. Seed one Management account (and one never-signed-in Management account for the linking-attack check), then run `pnpm --filter @sj/api staging:verify` and the [device protocol](/docs/DEVICE_TEST_PROTOCOL.md).
+
+## Running `staging:verify` safely
+
+```bash
+STAGING_CONFIRM=this-is-staging \
+STAGING_SUPABASE_PROJECT_REF=chiafggvergjwliqvlwv \
+STAGING_SUPABASE_URL=https://chiafggvergjwliqvlwv.supabase.co \
+STAGING_SUPABASE_ANON_KEY=sb_publishable_... STAGING_SUPABASE_SERVICE_ROLE_KEY=... \
+STAGING_API_URL=https://<staging-api> \
+pnpm --filter @sj/api staging:verify
+```
+
+- The project ref must be on `APPROVED_STAGING_REFS` in `apps/api/scripts/staging-guard.ts`, and the URL must be exactly `https://<ref>.supabase.co`. Approving another project is a reviewed code change.
+- Cleanup deletes only users this run provably created: a successful `createUser`, or a new account on an address the run generated (or a test phone number unused before the run). Staff accounts and any pre-existing users are never deleted.

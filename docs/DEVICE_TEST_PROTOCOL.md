@@ -6,14 +6,14 @@ The keychain session store is unit-tested (`apps/mobile/lib/chunked-store.test.t
 
 - A staging build of the app with `EXPO_PUBLIC_AUTH_MODE=supabase`, `EXPO_PUBLIC_API_URL` set to the staging API, and the staging Supabase URL and anon key. Use an EAS development or preview build. Expo Go is acceptable for a first pass.
 - On staging Supabase, shorten the **JWT expiry to 300 seconds** for the test run, so that refresh happens within minutes. Restore it afterwards.
-- Run `pnpm --filter @sj/api staging:verify` first. It covers the server side: OTP sessions, refresh, sign-out revocation, linking refusal and TOTP MFA.
+- Run `pnpm --filter @sj/api staging:verify` first. It covers the server side: OTP sessions, refresh, sign-out revocation, linking refusal and TOTP MFA. See [docs/STAGING.md](/docs/STAGING.md) for its settings.
 
 ## Cases
 
 | # | Steps | Expected |
 |---|---|---|
-| D1 | Sign in with **email OTP**. | The home screen shows your roles. |
-| D2 | Sign in with **SMS OTP** (real SIM, or a Supabase test number). | Home loads. Registering stores the verified number; no email is stored. |
+| D1 | Sign in with **email OTP** using a real inbox (Gmail, Outlook and an institutional address). | The code email arrives within a minute and not in spam, from the configured sender. The home screen shows your roles. *(`staging:verify` does not prove delivery: it issues codes via the Admin API.)* |
+| D2 | Sign in with **SMS OTP** on real SIMs (Jio, Airtel, Vi, BSNL). | The SMS arrives from the DLT-approved sender with the approved template. Home loads. Registering stores the verified number; no email is stored. *(A Supabase test number does not prove carrier delivery or DLT setup.)* |
 | D3 | Force-quit the app and reopen it. | Still signed in, no code requested. The session is read from the keychain. |
 | D4 | Leave the app in the background past the JWT expiry (more than 5 minutes), then reopen it and open Messages. | Loads without signing in again (automatic refresh). |
 | D5 | Turn on airplane mode, reopen the app, wait past expiry, then turn airplane mode off and pull to refresh or reopen. | Recovers without a crash. If the refresh token was rejected, a clean sign-out, never a stuck screen. |

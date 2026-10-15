@@ -12,7 +12,7 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 
 ## A. Accounts and environments (TBD-36, TBD-46)
 
-- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0006 applied, Data API closed (see [STAGING.md](STAGING.md)). Done 15 Oct 2026.
+- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0006 applied, Data API closed (see [docs/STAGING.md](/docs/STAGING.md)). Done 15 Oct 2026.
 - [ ] Organisation-owned Supabase **production** project (ap-south-1) on a paid plan with backups/PITR (budget TBD-46). Never use any personal project.
 - [ ] Cloud, domain, Vercel, GitHub organisation, and Apple/Google store accounts are owned by the organisers.
 - [ ] Secrets are stored in the secret manager. `SUPABASE_SERVICE_ROLE_KEY` goes to the API service only, never to any `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value.
@@ -22,20 +22,24 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 
 Two tools support this section:
 
-- **Automated server-side checks:** `pnpm --filter @sj/api staging:verify` (`apps/api/scripts/staging-verify.ts`). It covers real email OTP and SMS OTP (via a Supabase test number) sessions, JWKS keys, session refresh, sign-out revocation, the unconfirmed-email linking attack, and TOTP MFA elevation. It refuses to run unless the target is confirmed as staging, and it cleans up the users it creates.
-- **Real phones:** [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md), cases D1–D12: keychain persistence, background refresh, sign-out, reinstall behaviour, and console MFA on phone browsers.
+- **Automated server-side checks:** `pnpm --filter @sj/api staging:verify` (`apps/api/scripts/staging-verify.ts`). It covers real email OTP and SMS OTP (via a Supabase test number) sessions, JWKS keys, session refresh, sign-out revocation, the unconfirmed-email linking attack, and TOTP MFA elevation. It runs only against an approved staging project: `STAGING_SUPABASE_PROJECT_REF` must be on the approved list in `scripts/staging-guard.ts` and match the URL exactly, and `STAGING_CONFIRM` is also required. It deletes only users that it provably created, never pre-existing accounts.
+- **Real phones:** [docs/DEVICE_TEST_PROTOCOL.md](/docs/DEVICE_TEST_PROTOCOL.md), cases D1–D12: keychain persistence, background refresh, sign-out, reinstall behaviour, and console MFA on phone browsers.
 
-Neither has been run yet; no staging project exists (TBD-36). Run each case on staging and record the result and date:
+**What the automated checks do and do not prove.** `staging:verify` creates email OTP sessions with codes issued through Supabase's Admin API, and SMS sessions with a Supabase *test number*. That proves the session and token flow, linking and MFA. It does **not** prove that real emails arrive, that real SMS messages are delivered by carriers, or that the DLT sender and template registration works. Those are covered by device protocol D1 and D2 and the items below.
+
+Not run yet: the staging project now exists (`startup-jathara-staging`), but its secrets and hosted API are pending (docs/STAGING.md). Run each case on staging and record the result and date:
 
 - [ ] Email OTP sign-in: a new applicant registers; their email is stored only after Supabase confirms it.
+- [ ] **Real email delivery:** OTP emails arrive at Gmail, Outlook and an institutional (e.g. GIET) inbox within a minute and not in spam. Custom SMTP and sender domain are configured (D1).
 - [ ] SMS OTP sign-in (needs the SMS provider and DLT registration, TBD-35): the phone-only applicant flow works; no email is stored.
+- [ ] **Real SMS delivery:** OTP SMS arrives on Jio, Airtel, Vi and BSNL numbers via the DLT-approved sender ID and template (D2). A test number does not count.
 - [ ] An unconfirmed email in the user's own metadata does **not** link to a pre-created staff account.
 - [ ] An imported participant signs in with the confirmed email/mobile, the account links, the activation code works, and the code can't be reused.
 - [ ] Email and phone matching different accounts → refused and audited (`identity.link_refused`).
 - [ ] JWKS verification passes with the project's real signing keys (ES256/RS256); anonymous sessions are rejected.
 - [ ] Admin API outage → 503 for unlinked identities only. Check the rate limits against the expected sign-up volume.
 - [ ] Staff TOTP MFA: enrol, verify, get aal2; without aal2 → `mfa_required` on every privileged endpoint.
-- [ ] Mobile app on a real Android and iPhone: every case in DEVICE_TEST_PROTOCOL.md (D1–D12) passes, and the iOS reinstall behaviour (D8) is decided.
+- [ ] Mobile app on a real Android and iPhone: every case in [docs/DEVICE_TEST_PROTOCOL.md](/docs/DEVICE_TEST_PROTOCOL.md) (D1–D12) passes, and the iOS reinstall behaviour (D8) is decided.
 - [ ] `staging:verify` reports 0 failures and 0 skips, with all optional settings provided.
 
 ## C. Content and policy decisions
@@ -67,3 +71,21 @@ Neither has been run yet; no staging project exists (TBD-36). Run each case on s
 | D. Security and operations | | | |
 
 Only when every row above is filled in: set `LAUNCH_APPROVED=true` in the production API environment.
+
+### What the code enforces and what it does not
+
+`apps/api/src/config.ts` refuses a production start unless these configuration facts hold:
+
+- `AUTH_MODE=supabase`;
+- staff MFA is on;
+- `CORS_ORIGINS` is HTTPS-only;
+- the privacy notice version is not a draft;
+- `LAUNCH_APPROVED=true`.
+
+It **cannot** check that the operational items above have evidence and signatures. `LAUNCH_APPROVED` is therefore a human attestation, and it must be tightly controlled:
+
+- Only the named release owner may set it, in the production secret store.
+- Write access to that store is limited to the release owner and one deputy.
+- Every change is audit-logged by the platform.
+- It is set only after the sign-off table above is complete, and the date and approver are recorded in the release notes.
+- It is never set in staging, CI, `.env.example` or local `.env` files.

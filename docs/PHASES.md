@@ -21,7 +21,7 @@ All phases build on the locked architecture in [ARCHITECTURE.md](ARCHITECTURE.md
 - Mobile sessions in the device keychain.
 - Staff MFA mandatory in production, with a console step-up.
 - Malformed-row import validation.
-- The production launch gate ([LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md)): production stays closed until live Supabase staging tests, the approved privacy text and the remaining checks are signed off.
+- The production launch gate ([docs/LAUNCH_CHECKLIST.md](/docs/LAUNCH_CHECKLIST.md)): production stays closed until live Supabase staging tests, the approved privacy text and the remaining checks are signed off.
 
 ## Rules for every phase
 
