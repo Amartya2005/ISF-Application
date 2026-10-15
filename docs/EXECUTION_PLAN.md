@@ -81,9 +81,9 @@ Rules:
 |---|---|---|
 | editions | `GET /public/editions` (server-computed registration windows) | M1 ✅ |
 | registration | `POST /me/registrations` · `GET /me/applications` · `GET /me/notifications` · `GET /editions/{y}/me` (edition-gated) | M1 ✅ |
-| selection | `GET /manage/editions/{y}/applications` · `GET /manage/applications/{id}` · `PUT\|DELETE /manage/applications/{id}/decision` · `POST /manage/editions/{y}/decisions/release` · `PUT /manage/editions/{y}/selection-limit` | M1 ✅ |
+| selection | `GET /manage/editions/{y}/applications` · `GET /manage/applications/{id}` · `PUT\|DELETE /manage/applications/{id}/decision` · `POST /manage/editions/{y}/decisions/release` · `PUT /manage/editions/{y}/selection-limit` · corrections: `GET /manage/editions/{y}/corrections` · `POST /manage/applications/{id}/corrections` · `POST /manage/corrections/{id}/approve\|reject\|cancel` · `POST /me/applications/{id}/withdraw` | M1 ✅ · corrections and withdrawal ✅ Phase 5 |
 | identity/admin | `POST /admin/imports` (preview) · `POST /admin/imports/{id}/commit` · `/admin/users` · `/admin/users/{id}/roles` · `/admin/users/{id}/activation` | M2 |
-| ranking | `PUT /manage/editions/{y}/criteria` · `POST /manage/editions/{y}/ranking-runs` · `GET /manage/ranking-runs/{id}` | M3 |
+| ranking | `GET\|POST /manage/editions/{y}/criteria-sets` · `POST /manage/criteria-sets/{id}/approve` · `GET\|POST /manage/editions/{y}/ranking-runs` · `GET /manage/ranking-runs/{id}` · `PUT /manage/ranking-runs/{id}/cut-line` | M3 ✅ (Phase 5) |
 | jury | `/manage/editions/{y}/jury-assignments` · `/rubrics` · `/pitch/current` · `/editions/{y}/jury/startups` · `PUT\|POST /editions/{y}/jury/evaluations/{id}` · `POST /manage/evaluations/{id}/reopen` | M4 |
 | volunteers | `POST /admin/editions/{y}/volunteer-runs` · `POST /manage/volunteer-runs/{id}/approve` · `POST /manage/volunteer-assignments/{id}/reassign` · `GET /editions/{y}/me/assignment` | M4 |
 | content & notices | `GET /public/content` · `GET /editions/{y}/content` · `PUT /admin\|manage/content/{id}` (+publish) · `POST /manage/editions/{y}/notices` · `POST /me/push-tokens` | M5 |
@@ -251,10 +251,17 @@ The 10-phase delivery breakdown and its status are in [PHASES.md](PHASES.md). Ar
 - **Phase 4, mobile app:**
   - Expo app for Android and iOS: sign-in, activation, role-aware home, registration, per-year status and messages.
   - It compiles for Android, iOS and web, and runs end-to-end in a phone-sized browser.
+- **Phase 5, AI ranking and selection** (details in [PHASES.md](PHASES.md)):
+  - criteria sets with approval and versioning;
+  - ranking runs processed by a worker under the restricted database role `sj_ranking_worker` (cannot write decisions, read accounts or contact data);
+  - validated model output, deterministic weighted ranking, manual-review flags, steering detection and contact redaction;
+  - overrides with reasons, two-person corrections, applicant withdrawal;
+  - email/SMS outbox with per-message status and automated activation delivery when a provider is configured;
+  - Vertex AI, SMTP and MSG91 adapters (not yet verified against live accounts) and a synthetic-data model evaluation (`ranking:eval`).
 - **Awaiting approval** (decisions in DECISIONS.md):
   - Import column set v1 (TBD-41).
   - Activation validity period: 72 h, configurable (TBD-13).
-  - Automated delivery of codes (TBD-13).
+  - Criteria v1, override, correction and result-message policies and wording (TBD-01, -14, -18, -37).
 
 ### First vertical slice (M1)
 

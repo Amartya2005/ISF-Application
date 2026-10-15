@@ -104,13 +104,18 @@ export default function UserPage({ params }: { params: Promise<{ id: string }> }
                   onClick={() => void act(async () => { setIssued(await api.admin.issueActivation(u.id)); await load(); })}>
                   Issue activation code
                 </button>
-                {issued && (
+                {issued && (issued.token ? (
                   <div className="notice notice-ok" style={{ marginTop: 12 }}>
                     <p><strong>Activation code (shown once):</strong></p>
                     <p><code style={{ wordBreak: "break-all" }}>{issued.token}</code></p>
-                    <p className="small">Valid until {formatIst(issued.expiresAt)}. Give it to {u.fullName} privately. Automatic delivery to the participant’s own email or mobile comes once the email and SMS providers are in place (TBD-13); until then, hand it over yourself. Never put it in a spreadsheet.</p>
+                    <p className="small">Valid until {formatIst(issued.expiresAt)}. Give it to {u.fullName} privately: automatic delivery is not configured for their contact (TBD-13). Never put it in a spreadsheet.</p>
                   </div>
-                )}
+                ) : (
+                  <div className="notice notice-ok" style={{ marginTop: 12 }}>
+                    <p>The code was sent by {issued.delivery === "email" ? "email" : "SMS"} to {u.fullName}’s {issued.delivery === "email" ? "email address" : "mobile number"} on file.
+                      It is valid until {formatIst(issued.expiresAt)}. You do not see the code.</p>
+                  </div>
+                ))}
               </>
             )}
             {can(me, "user.manage") && !self && (

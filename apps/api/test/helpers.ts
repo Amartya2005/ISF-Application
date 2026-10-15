@@ -51,23 +51,29 @@ export async function createTestDb(): Promise<{ url: string; sql: Sql; drop: () 
 type CallOpts = { as?: string; aal?: "aal1" | "aal2"; body?: unknown; token?: string };
 
 export async function createTestApp(
-  opts: { now?: Date; requireStaffMfa?: boolean; corsOrigins?: string[]; verifier?: TokenVerifier; identity?: IdentityResolver } = {},
+  opts: {
+    now?: Date; requireStaffMfa?: boolean; corsOrigins?: string[]; verifier?: TokenVerifier; identity?: IdentityResolver;
+    config?: Partial<Config>; automated?: { email: boolean; sms: boolean };
+  } = {},
 ) {
   const db = await createTestDb();
   let current = opts.now ?? BEFORE_DEADLINE;
   const config: Config = {
     nodeEnv: "test", databaseUrl: db.url, port: 0, authMode: "dev", devAuthSecret: SECRET,
     requireStaffMfa: opts.requireStaffMfa ?? false, corsOrigins: opts.corsOrigins ?? [], logLevel: "silent", registrationRateLimit: 1000, activationTtlHours: 72, activationRateLimit: 1000,
+    runWorkers: false, publicWebUrl: "https://web.test", ranking: { provider: "stub" }, email: { provider: "none" }, sms: { provider: "none" },
+    ...opts.config,
   };
   const app = await buildApp({
     config, sql: db.sql, verifier: opts.verifier ?? devVerifier(SECRET), identity: opts.identity ?? devIdentityResolver,
-    clock: () => current, logger: false,
+    clock: () => current, logger: false, automated: opts.automated,
   });
 
   const t = {
     app,
     sql: db.sql,
     setNow(d: Date) { current = d; },
+    now: () => current,
     token: (email: string, aal: "aal1" | "aal2" = "aal1") => issueDevToken(SECRET, email, { aal }),
     /** Dev token with explicit verification assertions (what the dev identity resolver will report as proven). */
     tokenWith: (email: string | null, o: Parameters<typeof issueDevToken>[2] = {}) => issueDevToken(SECRET, email, o),
@@ -116,3 +122,27 @@ export const FORM_ANSWERS: Record<string, string> = {
   impact: "Fewer failed harvests and lower water use for tribal farming households.",
   team: "Two founders: an electronics engineer and an agronomist with ten years in extension work.",
 };
+
+/**
+ * A scripted ranking model for tests. `decide` sees the criteria and the application data exactly as the worker sent
+ * them and returns raw model text (or throws). Every prompt is recorded so tests can inspect what the model saw.
+ */
+export function fakeModel(decide: (call: { criteria: { criterion: string; range: [number, number] }[]; data: { description: string; location: string | null; answers: { question: string; answer: string }[] }; system: string }) => string) {
+  const prompts: { system: string; user: string }[] = [];
+  return {
+    ref: "fake:test-model",
+    prompts,
+    async complete({ system, user }: { system: string; user: string }) {
+      prompts.push({ system, user });
+      const between = (tag: string) => user.split(`<${tag}>`)[1]!.split(`</${tag}>`)[0]!.trim();
+      return decide({ criteria: JSON.parse(between("criteria")), data: JSON.parse(between("application_data")), system });
+    },
+  };
+}
+
+/** Valid model output giving every criterion the same score. */
+export const allScores = (criteria: { criterion: string }[], score: number, extra: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    scores: criteria.map((c) => ({ criterion: c.criterion, score, explanation: `Scored ${score} on the evidence given.` })),
+    summary: `Uniform score of ${score}.`, injection_suspected: false, ...extra,
+  });

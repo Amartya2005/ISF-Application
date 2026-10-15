@@ -7,7 +7,7 @@
 | API URL | `https://chiafggvergjwliqvlwv.supabase.co` |
 | Publishable key (public) | `sb_publishable_g70WFso8X3RevFDQhNAxxw_aGhcSxk_`. Safe to ship in web and app builds; it grants no table access (see below). |
 | JWT signing | Asymmetric **ES256** key published at `/auth/v1/.well-known/jwks.json`, as the API's verifier requires |
-| Database schema | Migrations 0001–0007 applied and recorded in `schema_migrations` with the same checksums as `db/migrations`, so `pnpm db:migrate` sees staging as up to date |
+| Database schema | Migrations 0001–0009 applied and recorded in `schema_migrations` with the same checksums as `db/migrations`, so `pnpm db:migrate` sees staging as up to date |
 | Data API | Closed. All 32 tables have row-level security on with no policies, and `anon`/`authenticated` hold no privileges (checked in SQL on 15 Oct 2026; Supabase security advisor shows only the expected "RLS enabled, no policy" notes) |
 
 Also in the ISF organisation: "Amartya2005's Project" (Sydney, ap-southeast-2) was created automatically, is empty, and is **paused** to free the free-plan project slot. Restore or delete it from the dashboard as you prefer. The personal "n8n" organisation and its project are not used.
@@ -24,7 +24,8 @@ Also in the ISF organisation: "Amartya2005's Project" (Sydney, ap-southeast-2) w
    - MFA: TOTP enabled;
    - for the device protocol run, temporarily shorten the JWT expiry to 300 s.
 3. **Host the staging API** (AUTH_MODE=supabase, REQUIRE_STAFF_MFA=true, NODE_ENV=staging), plus the website and console with `NEXT_PUBLIC_AUTH_MODE=supabase`, `NEXT_PUBLIC_SIGNIN_METHODS=email` (TBD-12) and the URL and key above. Recommended hosting (TBD-46): Cloud Run asia-south1 for the API, scaled to zero, and a Vercel preview for the web apps. It awaits organisation-owned accounts (TBD-36).
-4. Seed one Management account (and one never-signed-in Management account for the linking-attack check), then run `pnpm --filter @sj/api staging:verify` and the [device protocol](/docs/DEVICE_TEST_PROTOCOL.md).
+4. **Phase 5 settings** for the staging API: `RANKING_PROVIDER=vertex` with the staging project's model settings once the Google Cloud account exists (until then `stub`, which is not an AI); `NOTIFY_EMAIL_PROVIDER=smtp` with Amazon SES once it exists (until then `none`: messages stay queued); `RUN_WORKERS=true`, or a separate `start:worker` service. The ranking worker uses the database role `sj_ranking_worker` (migration 0008). Migration 0009 gives the migrating user a membership with SET, so it can switch to that role. Checked on staging on 15 Oct 2026: `postgres` can `SET ROLE sj_ranking_worker`, and inside that role reading `selection_decisions` or `user_accounts` is refused (42501). The API's database user must be the user that ran the migrations; the workers log an error at start-up if it cannot switch roles.
+5. Seed one Management account (and one never-signed-in Management account for the linking-attack check), then run `pnpm --filter @sj/api staging:verify` and the [device protocol](/docs/DEVICE_TEST_PROTOCOL.md).
 
 ## Running `staging:verify` safely
 

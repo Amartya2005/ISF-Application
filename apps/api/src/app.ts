@@ -3,8 +3,9 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyInstance } from "fastify";
 import {
-  ACCOUNT_STATUSES, ActivationRequest, DecisionRequest, DevSessionRequest, normaliseMobile, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
-  RegistrationRequest, ReleaseRequest, ROLES, RoleGrantRequest, SelectionLimitRequest,
+  ACCOUNT_STATUSES, ActivationRequest, CorrectionReviewRequest, CriteriaSetCreate, CutLineRequest, DecisionCorrectionRequest, DecisionRequest,
+  DevSessionRequest, normaliseMobile, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
+  RegistrationRequest, ReleaseRequest, ROLES, RoleGrantRequest, SelectionLimitRequest, StartRankingRunRequest,
 } from "@sj/contracts";
 import { z } from "zod";
 import type { Config } from "./config.js";
@@ -13,8 +14,13 @@ import { getUser, grantRole, issueActivation, listUsers, me, redeemActivation, r
 import { listEditions, toPublic } from "./modules/editions/service.js";
 import { commitBatch, discardBatch, getBatch, listBatches, previewImport, templateCsv } from "./modules/imports/service.js";
 import { myNotifications } from "./modules/notifications/service.js";
-import { myApplications, register } from "./modules/registration/service.js";
-import { draftDecision, getApplication, listApplications, releaseDecisions, setSelectionLimit, withdrawDraft } from "./modules/selection/service.js";
+import { approveCriteriaSet, createCriteriaSet, getRun, listCriteriaSets, listRuns, setCutLine, startRun } from "./modules/ranking/service.js";
+import { myApplications, register, withdrawApplication } from "./modules/registration/service.js";
+import {
+  approveCorrection, cancelCorrection, draftDecision, getApplication, listApplications, listCorrections, rejectCorrection, releaseDecisions,
+  requestCorrection, setSelectionLimit, withdrawDraft,
+} from "./modules/selection/service.js";
+import { automatedChannels, rankingModelFrom } from "./workers.js";
 import { issueDevToken, type IdentityResolver, type TokenVerifier } from "./platform/auth.js";
 import { AppError, parse, registerErrorHandler } from "./platform/errors.js";
 import { authenticate, principalOf, requireEditionAccess, requirePermission, resolvePrincipal } from "./platform/principal.js";
@@ -28,6 +34,10 @@ export type AppDeps = {
   identity: IdentityResolver;
   clock?: Clock;
   logger?: boolean | object;
+  /** Recorded on ranking runs (FR-RNK-07). Defaults to the configured provider's model reference. */
+  rankingModelRef?: string;
+  /** Channels with a configured provider, for automated activation delivery (TBD-13). Defaults from config. */
+  automated?: { email: boolean; sms: boolean };
 };
 
 const Year = z.object({ year: z.coerce.number().int().min(2026).max(2100) });
@@ -36,6 +46,9 @@ const Id = z.object({ id: z.string().uuid() });
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const { config, sql, verifier, identity } = deps;
   const now = deps.clock ?? (() => new Date());
+  const rankingModelRef = deps.rankingModelRef ?? rankingModelFrom(config).ref;
+  const automated = deps.automated ?? automatedChannels(config);
+  const webUrl = config.publicWebUrl;
   const app = Fastify({
     logger: deps.logger ?? { level: config.logLevel, redact: ["req.headers.authorization", "req.headers.cookie"] },
     trustProxy: true,
@@ -78,8 +91,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.get("/v1/me/applications", { preHandler: [auth, requirePermission("application.read_own")] }, async (req) => {
     const p = principalOf(req);
-    return p.account ? myApplications(sql, p.account.id) : { startup: null, applications: [] };
+    return p.account ? myApplications(sql, p.account.id, now()) : { startup: null, applications: [] };
   });
+
+  // TBD-37: the applicant withdraws one year's application (before that year's event).
+  app.post("/v1/me/applications/:id/withdraw", { preHandler: [auth, requirePermission("application.withdraw_own")] }, async (req) =>
+    withdrawApplication(sql, principalOf(req), parse(Id, req.params).id, now()));
 
   app.get("/v1/me/notifications", { preHandler: [auth, requirePermission("notification.read_own")] }, async (req) => {
     const p = principalOf(req);
@@ -131,7 +148,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/v1/admin/users/:id/reactivate", { preHandler: [auth, requirePermission("user.manage")] }, async (req) =>
     setStatus(sql, principalOf(req), parse(Id, req.params).id, "reactivated"));
   app.post("/v1/admin/users/:id/activation", { preHandler: [auth, requirePermission("activation.issue")] }, async (req, reply) =>
-    reply.status(201).send(await issueActivation(sql, principalOf(req), parse(Id, req.params).id, config.activationTtlHours, now())));
+    reply.status(201).send(await issueActivation(sql, principalOf(req), parse(Id, req.params).id, config.activationTtlHours, now(), automated)));
 
   // ---------------------------------------------------------------- admin: bulk import (FR-IMP-*)
   app.get("/v1/admin/imports", { preHandler: [auth, requirePermission("import.manage")] }, async () => listBatches(sql));
@@ -163,7 +180,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.put("/v1/manage/applications/:id/decision", { preHandler: [auth, requirePermission("decision.draft")] }, async (req) => {
     const { id } = parse(Id, req.params);
-    return draftDecision(sql, principalOf(req), id, parse(DecisionRequest, req.body));
+    return draftDecision(sql, principalOf(req), id, parse(DecisionRequest, req.body), now());
   });
 
   app.delete("/v1/manage/applications/:id/decision", { preHandler: [auth, requirePermission("decision.draft")] }, async (req) => {
@@ -174,13 +191,46 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/v1/manage/editions/:year/decisions/release", { preHandler: [auth, requirePermission("decision.release")] }, async (req) => {
     const { year } = parse(Year, req.params);
     const body = parse(ReleaseRequest, req.body ?? {});
-    return releaseDecisions(sql, principalOf(req), year, body.applicationIds, { confirmOverLimit: body.confirmOverLimit });
+    return releaseDecisions(sql, principalOf(req), year, body.applicationIds, { confirmOverLimit: body.confirmOverLimit, now: now(), webUrl });
   });
 
   app.put("/v1/manage/editions/:year/selection-limit", { preHandler: [auth, requirePermission("selection_limit.configure")] }, async (req) => {
     const { year } = parse(Year, req.params);
     return setSelectionLimit(sql, principalOf(req), year, parse(SelectionLimitRequest, req.body).limit);
   });
+
+  // ---------------------------------------------------------------- decision corrections (TBD-37): two people
+  app.get("/v1/manage/editions/:year/corrections", { preHandler: [auth, requirePermission("decision.correct")] }, async (req) => {
+    const { year } = parse(Year, req.params);
+    const q = parse(z.object({ status: z.enum(["pending", "applied", "rejected", "cancelled"]).optional() }), req.query);
+    return listCorrections(sql, year, q.status);
+  });
+  app.post("/v1/manage/applications/:id/corrections", { preHandler: [auth, requirePermission("decision.correct")] }, async (req, reply) =>
+    reply.status(201).send(await requestCorrection(sql, principalOf(req), parse(Id, req.params).id, parse(DecisionCorrectionRequest, req.body))));
+  app.post("/v1/manage/corrections/:id/approve", { preHandler: [auth, requirePermission("decision.correct")] }, async (req) =>
+    approveCorrection(sql, principalOf(req), parse(Id, req.params).id, parse(CorrectionReviewRequest, req.body ?? {}).note, { now: now(), webUrl }));
+  app.post("/v1/manage/corrections/:id/reject", { preHandler: [auth, requirePermission("decision.correct")] }, async (req) =>
+    rejectCorrection(sql, principalOf(req), parse(Id, req.params).id, parse(CorrectionReviewRequest, req.body ?? {}).note));
+  app.post("/v1/manage/corrections/:id/cancel", { preHandler: [auth, requirePermission("decision.correct")] }, async (req) =>
+    cancelCorrection(sql, principalOf(req), parse(Id, req.params).id));
+
+  // ---------------------------------------------------------------- AI ranking (Phase 5, FR-RNK-*)
+  app.get("/v1/manage/editions/:year/criteria-sets", { preHandler: [auth, requirePermission("ranking.read")] }, async (req) =>
+    listCriteriaSets(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/criteria-sets", { preHandler: [auth, requirePermission("criteria.manage")] }, async (req, reply) =>
+    reply.status(201).send(await createCriteriaSet(sql, principalOf(req), parse(Year, req.params).year, parse(CriteriaSetCreate, req.body))));
+  app.post("/v1/manage/criteria-sets/:id/approve", { preHandler: [auth, requirePermission("criteria.manage")] }, async (req) =>
+    approveCriteriaSet(sql, principalOf(req), parse(Id, req.params).id));
+  app.get("/v1/manage/editions/:year/ranking-runs", { preHandler: [auth, requirePermission("ranking.read")] }, async (req) =>
+    listRuns(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/ranking-runs", { preHandler: [auth, requirePermission("ranking.run")] }, async (req, reply) => {
+    const { criteriaSetId } = parse(StartRankingRunRequest, req.body);
+    return reply.status(202).send(await startRun(sql, principalOf(req), parse(Year, req.params).year, criteriaSetId, rankingModelRef, now()));
+  });
+  app.get("/v1/manage/ranking-runs/:id", { preHandler: [auth, requirePermission("ranking.read")] }, async (req) =>
+    getRun(sql, parse(Id, req.params).id));
+  app.put("/v1/manage/ranking-runs/:id/cut-line", { preHandler: [auth, requirePermission("ranking.run")] }, async (req) =>
+    setCutLine(sql, principalOf(req), parse(Id, req.params).id, parse(CutLineRequest, req.body).cutLine));
 
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {

@@ -2,6 +2,12 @@
 import type {
   AccountStatus,
   ActivationIssued,
+  CriteriaSet,
+  CriteriaSetCreate,
+  DecisionCorrection,
+  DecisionCorrectionRequest,
+  RankingRunDetail,
+  RankingRunSummary,
   AdminUser,
   AdminUserList,
   DecisionRequest,
@@ -63,6 +69,8 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
       req<{ token: string }>("POST", "/v1/dev/session", { ...(typeof id === "string" ? { email: id } : id), mfa }),
     register: (body: RegistrationRequest) => req<RegistrationResponse>("POST", "/v1/me/registrations", body),
     myApplications: () => req<MyApplicationsResponse>("GET", "/v1/me/applications"),
+    /** TBD-37: withdraw one year's application (until that year's event starts). */
+    withdrawApplication: (id: string) => req<MyApplicationsResponse>("POST", `/v1/me/applications/${id}/withdraw`),
     myNotifications: () => req<NotificationItem[]>("GET", "/v1/me/notifications"),
     me: () => req<MeResponse>("GET", "/v1/me"),
     activate: (token: string) => req<MeResponse>("POST", "/v1/me/activation", { token }),
@@ -98,6 +106,21 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
         }),
       setLimit: (year: number, limit: number | null) =>
         req<{ edition: number; selectionLimit: number | null }>("PUT", `/v1/manage/editions/${year}/selection-limit`, { limit }),
+      // AI ranking (Phase 5)
+      criteriaSets: (year: number) => req<CriteriaSet[]>("GET", `/v1/manage/editions/${year}/criteria-sets`),
+      createCriteriaSet: (year: number, body: CriteriaSetCreate) => req<CriteriaSet>("POST", `/v1/manage/editions/${year}/criteria-sets`, body),
+      approveCriteriaSet: (id: string) => req<CriteriaSet>("POST", `/v1/manage/criteria-sets/${id}/approve`),
+      runs: (year: number) => req<RankingRunSummary[]>("GET", `/v1/manage/editions/${year}/ranking-runs`),
+      startRun: (year: number, criteriaSetId: string) => req<RankingRunSummary>("POST", `/v1/manage/editions/${year}/ranking-runs`, { criteriaSetId }),
+      run: (id: string) => req<RankingRunDetail>("GET", `/v1/manage/ranking-runs/${id}`),
+      setCutLine: (id: string, cutLine: number | null) => req<RankingRunDetail>("PUT", `/v1/manage/ranking-runs/${id}/cut-line`, { cutLine }),
+      // Decision corrections (TBD-37)
+      corrections: (year: number, status?: DecisionCorrection["status"]) =>
+        req<DecisionCorrection[]>("GET", `/v1/manage/editions/${year}/corrections${status ? `?status=${status}` : ""}`),
+      requestCorrection: (id: string, body: DecisionCorrectionRequest) => req<ManageApplication>("POST", `/v1/manage/applications/${id}/corrections`, body),
+      approveCorrection: (id: string, note?: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/approve`, note ? { note } : {}),
+      rejectCorrection: (id: string, note?: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/reject`, note ? { note } : {}),
+      cancelCorrection: (id: string) => req<ManageApplication>("POST", `/v1/manage/corrections/${id}/cancel`),
     },
   };
 }

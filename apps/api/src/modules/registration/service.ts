@@ -108,7 +108,7 @@ export async function register(sql: Sql, p: Principal, input: Input, now: Date):
       // TBD-45: the leader's 18+ confirmation is part of the audited submission record.
       data: { years, reused, flags, adultDeclaration: input.adultDeclaration, formVersions: Object.fromEntries(formVersion) },
     });
-    return { ...(await myApplications(tx, account.id)), startupReused: reused };
+    return { ...(await myApplications(tx, account.id, now)), startupReused: reused };
   });
 }
 
@@ -137,16 +137,24 @@ async function ensureApplicantAccount(tx: Db, p: Principal, input: Input): Promi
   return created!;
 }
 
-/** The applicant's own view: separate status per year; drafts and internal states hidden (FR-REG-05, FR-SEL-09). */
-export async function myApplications(db: Db, userId: string): Promise<MyApplicationsResponse> {
+/** Today's date in India (YYYY-MM-DD): the event dates are local dates. */
+export const istDate = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(d);
+
+/**
+ * The applicant's own view: separate status per year; drafts, internal states and AI results hidden (FR-REG-05,
+ * FR-SEL-09, TBD-44).
+ */
+export async function myApplications(db: Db, userId: string, now: Date = new Date()): Promise<MyApplicationsResponse> {
   const [startup] = await db<{ id: string; name: string }[]>`
     select s.id, s.name from startups s
     join startup_memberships m on m.startup_id = s.id and m.user_id = ${userId} and m.position = 'leader'`;
   if (!startup) return { startup: null, applications: [] };
-  const apps = await db<{ id: string; edition: number; status: InternalStatus; submittedAt: Date; releasedAt: Date | null }[]>`
-    select a.id, a.edition_id as edition, a.status, a.submitted_at as "submittedAt", d.released_at as "releasedAt"
-    from applications a left join selection_decisions d on d.application_id = a.id
+  const apps = await db<{ id: string; edition: number; status: InternalStatus; submittedAt: Date; releasedAt: Date | null; correctedAt: Date | null; eventStartsOn: string | null }[]>`
+    select a.id, a.edition_id as edition, a.status, a.submitted_at as "submittedAt", d.released_at as "releasedAt",
+           d.corrected_at as "correctedAt", to_char(e.event_starts_on, 'YYYY-MM-DD') as "eventStartsOn"
+    from applications a left join selection_decisions d on d.application_id = a.id join event_editions e on e.id = a.edition_id
     where a.startup_id = ${startup.id} order by a.edition_id`;
+  const today = istDate(now);
   return {
     startup,
     applications: apps.map((a) => ({
@@ -154,7 +162,46 @@ export async function myApplications(db: Db, userId: string): Promise<MyApplicat
       edition: a.edition,
       status: applicantStatus(a.status),
       submittedAt: a.submittedAt.toISOString(),
-      decidedAt: a.releasedAt ? a.releasedAt.toISOString() : null,
+      decidedAt: a.releasedAt ? (a.correctedAt ?? a.releasedAt).toISOString() : null,
+      canWithdraw: a.status !== "withdrawn" && (!a.eventStartsOn || today < a.eventStartsOn),
     })),
   };
+}
+
+/**
+ * TBD-37: the leader withdraws their startup's application for one year, any time before that year's event starts.
+ * An unreleased draft decision is discarded and a pending correction cancelled; a selected team loses its access to
+ * that edition. The other year's application is never touched (RQ §6).
+ */
+export async function withdrawApplication(sql: Sql, p: Principal, applicationId: string, now: Date): Promise<MyApplicationsResponse> {
+  if (!p.account) throw new AppError(404, "not_found", "Not found", "Application was not found");
+  const userId = p.account.id;
+  await sql.begin(async (tx) => {
+    const [a] = await tx<{ edition: number; status: InternalStatus; eventStartsOn: string | null; releasedAt: Date | null; hasDecision: boolean }[]>`
+      select a.edition_id as edition, a.status, to_char(e.event_starts_on, 'YYYY-MM-DD') as "eventStartsOn",
+             d.released_at as "releasedAt", (d.application_id is not null) as "hasDecision"
+      from applications a
+      join startup_memberships m on m.startup_id = a.startup_id and m.user_id = ${userId} and m.position = 'leader'
+      join event_editions e on e.id = a.edition_id
+      left join selection_decisions d on d.application_id = a.id
+      where a.id = ${applicationId}
+      for update of a`;
+    // Someone else's application looks exactly like a missing one.
+    if (!a) throw new AppError(404, "not_found", "Not found", "Application was not found");
+    if (a.status === "withdrawn") throw new AppError(409, "already_withdrawn", "Already withdrawn", "This application is already withdrawn.");
+    if (a.eventStartsOn && istDate(now) >= a.eventStartsOn) {
+      throw new AppError(409, "event_started", "Too late to withdraw", `The ${a.edition} event has already started.`);
+    }
+    if (a.hasDecision && !a.releasedAt) await tx`delete from selection_decisions where application_id = ${applicationId}`;
+    await tx`update decision_corrections set status = 'cancelled', reviewed_at = clock_timestamp(), review_note = 'Application withdrawn by the applicant'
+             where application_id = ${applicationId} and status = 'pending'`;
+    if (a.status === "selected") {
+      await tx`update edition_access set revoked_at = now()
+               where user_id = ${userId} and edition_id = ${a.edition} and source = 'selected' and revoked_at is null`;
+    }
+    await tx`update applications set status = 'withdrawn', withdrawn_at = ${now} where id = ${applicationId}`;
+    await audit(tx, { actorUserId: userId, action: "application.withdrawn", entityType: "application", entityId: applicationId,
+      editionId: a.edition, data: { previousStatus: a.status, draftDiscarded: a.hasDecision && !a.releasedAt } });
+  });
+  return myApplications(sql, userId, now);
 }

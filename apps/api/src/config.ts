@@ -11,7 +11,7 @@ const Env = z.object({
   // Server-side secret used only to read authoritative user records (email/phone confirmation). Never expose to clients.
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional().or(z.literal("").transform(() => undefined)),
   // Staff MFA (FR-IAM-11). Defaults to on in production and may not be turned off there (checked in loadConfig).
-  REQUIRE_STAFF_MFA: z.enum(["true", "false"]).optional(),
+  REQUIRE_STAFF_MFA: z.enum(["true", "false"]).optional().or(z.literal("").transform(() => undefined)),   // empty = unset (.env.example)
   CORS_ORIGINS: z.string().default("http://localhost:3000,http://localhost:3001"),
   LOG_LEVEL: z.string().default("info"),
   REGISTRATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
@@ -20,7 +20,35 @@ const Env = z.object({
   ACTIVATION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
   ACTIVATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
   // Explicit sign-off that every item in docs/LAUNCH_CHECKLIST.md is complete. Required to start in production.
-  LAUNCH_APPROVED: z.enum(["true", "false"]).optional(),
+  LAUNCH_APPROVED: z.enum(["true", "false"]).optional().or(z.literal("").transform(() => undefined)),   // empty = unset (.env.example)
+  // Background workers (ranking runs, email/SMS outbox) in this process. Run `pnpm --filter @sj/api start:worker` as a
+  // separate service instead and set this to false where the host throttles CPU between requests (Cloud Run).
+  RUN_WORKERS: z.enum(["true", "false"]).default("true"),
+  // Development only: pin the API's clock (ISO date-time), e.g. to exercise the post-deadline ranking flow locally.
+  DEV_NOW: z.string().datetime({ offset: true }).optional().or(z.literal("").transform(() => undefined)),
+  // Public website, used in links inside result messages.
+  PUBLIC_WEB_URL: z.string().url().default("http://localhost:3000"),
+  // ---- AI ranking (TBD-35). Separate configuration from the Help Desk (FR-RNK-12). `stub` is NOT an AI and is
+  // refused in production.
+  RANKING_PROVIDER: z.enum(["stub", "vertex"]).default("stub"),
+  RANKING_VERTEX_PROJECT: z.string().optional(),
+  RANKING_VERTEX_LOCATION: z.string().default("asia-south1"),
+  RANKING_VERTEX_MODEL: z.string().optional(),
+  RANKING_VERTEX_ACCESS_TOKEN: z.string().optional().or(z.literal("").transform(() => undefined)),
+  // FR-RNK-12: a service account used only for ranking (impersonated by the runtime identity); recommended in production.
+  RANKING_VERTEX_SERVICE_ACCOUNT: z.string().email().optional().or(z.literal("").transform(() => undefined)),
+  // ---- Email/SMS outbox (TBD-13, TBD-14, TBD-35). `none` keeps messages queued; `log` is development only.
+  NOTIFY_EMAIL_PROVIDER: z.enum(["none", "log", "smtp"]).default("none"),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  NOTIFY_EMAIL_FROM: z.string().optional(),
+  NOTIFY_SMS_PROVIDER: z.enum(["none", "log", "msg91"]).default("none"),
+  MSG91_AUTH_KEY: z.string().optional(),
+  MSG91_TEMPLATE_RESULT: z.string().optional(),
+  MSG91_TEMPLATE_CORRECTION: z.string().optional(),
+  MSG91_TEMPLATE_ACTIVATION: z.string().optional(),
 });
 
 export type Config = {
@@ -37,6 +65,12 @@ export type Config = {
   registrationRateLimit: number;
   activationTtlHours: number;
   activationRateLimit: number;
+  runWorkers: boolean;
+  devNow?: Date;
+  publicWebUrl: string;
+  ranking: { provider: "stub" | "vertex"; vertex?: { project: string; location: string; model: string; accessToken?: string; serviceAccount?: string } };
+  email: { provider: "none" | "log" | "smtp"; smtp?: { host: string; port: number; user?: string; pass?: string; from: string } };
+  sms: { provider: "none" | "log" | "msg91"; msg91?: { authKey: string; templates: Record<string, string | undefined> } };
 };
 
 /**
@@ -54,6 +88,11 @@ export function productionBlockers(e: z.output<typeof Env>, privacyNoticeVersion
   if (privacyNoticeVersion.startsWith("draft")) {
     blockers.push(`the privacy notice is still a draft (${privacyNoticeVersion}); publish the approved text and version first (TBD-32)`);
   }
+  if (e.RANKING_PROVIDER !== "vertex") blockers.push("RANKING_PROVIDER must be vertex: the stub is not an AI and is for development only (TBD-35)");
+  if (e.NOTIFY_EMAIL_PROVIDER === "log" || e.NOTIFY_SMS_PROVIDER === "log") {
+    blockers.push("NOTIFY_EMAIL_PROVIDER / NOTIFY_SMS_PROVIDER=log is for development only: it reports messages as sent without sending them");
+  }
+  if (e.DEV_NOW) blockers.push("DEV_NOW must not be set in production");
   if (e.LAUNCH_APPROVED !== "true") {
     blockers.push("LAUNCH_APPROVED=true is not set: complete and sign off docs/LAUNCH_CHECKLIST.md (live Supabase staging tests, approved privacy text, remaining launch checks)");
   }
@@ -78,6 +117,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
   if (e.AUTH_MODE === "supabase" && (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_ROLE_KEY)) {
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when AUTH_MODE=supabase");
   }
+  if (e.DEV_NOW && (production || e.AUTH_MODE !== "dev")) throw new Error("DEV_NOW is allowed only with AUTH_MODE=dev outside production");
+  if (e.RANKING_PROVIDER === "vertex" && (!e.RANKING_VERTEX_PROJECT || !e.RANKING_VERTEX_MODEL)) {
+    throw new Error("RANKING_VERTEX_PROJECT and RANKING_VERTEX_MODEL are required when RANKING_PROVIDER=vertex");
+  }
+  if (e.NOTIFY_EMAIL_PROVIDER === "smtp" && (!e.SMTP_HOST || !e.NOTIFY_EMAIL_FROM)) {
+    throw new Error("SMTP_HOST and NOTIFY_EMAIL_FROM are required when NOTIFY_EMAIL_PROVIDER=smtp");
+  }
+  if (e.NOTIFY_SMS_PROVIDER === "msg91" && !e.MSG91_AUTH_KEY) throw new Error("MSG91_AUTH_KEY is required when NOTIFY_SMS_PROVIDER=msg91");
   return {
     nodeEnv: e.NODE_ENV,
     databaseUrl: e.DATABASE_URL,
@@ -92,5 +139,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
     registrationRateLimit: e.REGISTRATION_RATE_LIMIT,
     activationTtlHours: e.ACTIVATION_TTL_HOURS,
     activationRateLimit: e.ACTIVATION_RATE_LIMIT,
+    runWorkers: e.RUN_WORKERS === "true",
+    devNow: e.DEV_NOW ? new Date(e.DEV_NOW) : undefined,
+    publicWebUrl: e.PUBLIC_WEB_URL.replace(/\/$/, ""),
+    ranking: {
+      provider: e.RANKING_PROVIDER,
+      vertex: e.RANKING_PROVIDER === "vertex"
+        ? {
+            project: e.RANKING_VERTEX_PROJECT!, location: e.RANKING_VERTEX_LOCATION, model: e.RANKING_VERTEX_MODEL!,
+            accessToken: e.RANKING_VERTEX_ACCESS_TOKEN, serviceAccount: e.RANKING_VERTEX_SERVICE_ACCOUNT,
+          }
+        : undefined,
+    },
+    email: {
+      provider: e.NOTIFY_EMAIL_PROVIDER,
+      smtp: e.NOTIFY_EMAIL_PROVIDER === "smtp"
+        ? { host: e.SMTP_HOST!, port: e.SMTP_PORT, user: e.SMTP_USER, pass: e.SMTP_PASS, from: e.NOTIFY_EMAIL_FROM! }
+        : undefined,
+    },
+    sms: {
+      provider: e.NOTIFY_SMS_PROVIDER,
+      msg91: e.NOTIFY_SMS_PROVIDER === "msg91"
+        ? { authKey: e.MSG91_AUTH_KEY!, templates: { selection_result: e.MSG91_TEMPLATE_RESULT, decision_corrected: e.MSG91_TEMPLATE_CORRECTION, activation: e.MSG91_TEMPLATE_ACTIVATION } }
+        : undefined,
+    },
   };
 }

@@ -5,13 +5,15 @@ import { formatIst } from "@sj/client";
 import type { MyApplicationsResponse, NotificationItem } from "@sj/contracts";
 import { api, useSessionIdentity } from "@/lib/session";
 
-const LABEL = { under_review: "Under review", selected: "Selected", not_selected: "Not selected" } as const;
+const LABEL = { under_review: "Under review", selected: "Selected", not_selected: "Not selected", withdrawn: "Withdrawn" } as const;
 
 export default function StatusPage() {
   const email = useSessionIdentity();
   const [data, setData] = useState<MyApplicationsResponse | null>(null);
   const [notes, setNotes] = useState<NotificationItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!email) return;
@@ -51,12 +53,31 @@ export default function StatusPage() {
       <p className="muted">Each year has its own application and its own result.</p>
       <div className="list">
         {data.applications.map((a) => (
-          <div className="card row" key={a.id}>
-            <div>
-              <h3>Startup Jathara {a.edition}</h3>
-              <span className="muted small">Submitted {formatIst(a.submittedAt)} IST{a.decidedAt ? ` · Decision released ${formatIst(a.decidedAt)} IST` : ""}</span>
+          <div className="card" key={a.id}>
+            <div className="row">
+              <div>
+                <h3>Startup Jathara {a.edition}</h3>
+                <span className="muted small">Submitted {formatIst(a.submittedAt)} IST{a.decidedAt ? ` · Decision released ${formatIst(a.decidedAt)} IST` : ""}</span>
+              </div>
+              <span className={`badge badge-${a.status}`}>{LABEL[a.status]}</span>
             </div>
-            <span className={`badge badge-${a.status}`}>{LABEL[a.status]}</span>
+            {a.canWithdraw && (confirming === a.id ? (
+              <div className="notice notice-warn" style={{ marginTop: 12 }}>
+                <p className="small">
+                  Withdraw your {a.edition} application? This cannot be undone.
+                  {a.status === "selected" && ` You will lose access to the ${a.edition} event.`} Your other year is not affected.
+                </p>
+                <div className="actions">
+                  <button className="btn btn-primary" disabled={busy} onClick={() => {
+                    setBusy(true);
+                    api.withdrawApplication(a.id).then((d) => { setData(d); setConfirming(null); }, (e: Error) => setError(e.message)).finally(() => setBusy(false));
+                  }}>Confirm: withdraw {a.edition}</button>
+                  <button className="btn" onClick={() => setConfirming(null)}>Keep my application</button>
+                </div>
+              </div>
+            ) : (
+              <div className="actions"><button className="btn" onClick={() => setConfirming(a.id)}>Withdraw {a.edition} application</button></div>
+            ))}
           </div>
         ))}
       </div>

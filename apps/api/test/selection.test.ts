@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createTestApp, registration, type TestApp } from "./helpers.js";
+import { AFTER_DEADLINE, createTestApp, registration, type TestApp } from "./helpers.js";
 
 let t: TestApp;
 const MANAGER = "manager@jathara.test";
@@ -7,7 +7,7 @@ const ADMIN = "admin@jathara.test";
 const BOTH = "both@example.com";    // applies for 2026 and 2027
 const ONE = "one@example.com";      // applies for 2026 only
 const EXTRA = "extra@example.com";
-let bothApp26: string, bothApp27: string, oneApp26: string, extraApp26: string;
+let bothApp26: string, bothApp27: string, oneApp26: string, extraApp26: string, lateApp26: string;
 
 beforeAll(async () => {
   t = await createTestApp();
@@ -17,6 +17,9 @@ beforeAll(async () => {
   [bothApp26, bothApp27] = a.json.applications.map((x: { id: string }) => x.id);
   oneApp26 = (await t.call("POST", "/v1/me/registrations", { as: ONE, body: registration({ name: "One Year Co" }) })).json.applications[0].id;
   extraApp26 = (await t.call("POST", "/v1/me/registrations", { as: EXTRA, body: registration({ name: "Extra Co" }) })).json.applications[0].id;
+  lateApp26 = (await t.call("POST", "/v1/me/registrations", { as: "late-limit@example.com", body: registration({ name: "Late Limit Co" }) })).json.applications[0].id;
+  // TBD-42: decisions are made after registration closes, so the whole cohort is reviewed together.
+  t.setNow(AFTER_DEADLINE);
 });
 afterAll(async () => { await t.close(); });
 
@@ -44,11 +47,11 @@ describe("AT-02 / AT-13 authorisation", () => {
   it("Management sees the edition's applications with leader details and the other edition", async () => {
     const r = await t.call("GET", LIST, { as: MANAGER });
     expect(r.status).toBe(200);
-    expect(r.json.items).toHaveLength(3);
+    expect(r.json.items).toHaveLength(4);
     const both = r.json.items.find((i: { id: string }) => i.id === bothApp26);
     expect(both.leader.mobile).toBe("+919876543210");
     expect(both.otherEditions).toEqual([{ edition: 2027, status: "submitted" }]);
-    expect(r.json.counts).toEqual({ submitted: 3 });
+    expect(r.json.counts).toEqual({ submitted: 4 });
   });
 
   it("rejects unknown editions and malformed ids cleanly", async () => {
@@ -118,11 +121,23 @@ describe("AT-14 release, AT-10 independent editions, AT-09 access", () => {
     expect(a27!.status).toBe("submitted");
   });
 
+  it("TBD-14: each released result is also queued once for the applicant's verified contact, with its status visible", async () => {
+    const out = await t.sql<{ channel: string; recipient: string; status: string; kind: string }[]>`
+      select channel, recipient, status, kind from notifications where channel <> 'in_app' order by recipient`;
+    expect(out).toEqual([
+      { channel: "email", recipient: BOTH, status: "queued", kind: "selection_result" },
+      { channel: "email", recipient: ONE, status: "queued", kind: "selection_result" },
+    ]);
+    const detail = (await t.call("GET", `/v1/manage/applications/${oneApp26}`, { as: MANAGER })).json;
+    expect(detail.notifications.map((n: { channel: string; status: string }) => [n.channel, n.status]))
+      .toEqual([["in_app", "sent"], ["email", "queued"]]);
+  });
+
   it("re-releasing is harmless: nothing new is released or notified", async () => {
     const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: {} });
     expect(r.json.released).toBe(0);
     const [n] = await t.sql`select count(*)::int as n from notifications`;
-    expect(n!.n).toBe(2);
+    expect(n!.n).toBe(4);   // two in-app + two email, unchanged
   });
 
   it("released decisions cannot be changed or withdrawn (TBD-37)", async () => {
@@ -134,6 +149,17 @@ describe("AT-14 release, AT-10 independent editions, AT-09 access", () => {
     const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: { applicationIds: [extraApp26] } });
     expect(r.status).toBe(409);
     expect(r.json.code).toBe("not_releasable");
+  });
+});
+
+describe("TBD-42: nothing is decided for an edition while its registration is open", () => {
+  it("refuses drafts and releases for 2027, which is still open", async () => {
+    const d = await t.call("PUT", `/v1/manage/applications/${bothApp27}/decision`, { as: MANAGER, body: { outcome: "selected" } });
+    expect(d.status).toBe(409);
+    expect(d.json.code).toBe("registration_open");
+    const r = await t.call("POST", "/v1/manage/editions/2027/decisions/release", { as: MANAGER, body: {} });
+    expect(r.json.code).toBe("registration_open");
+    expect((await t.sql`select count(*)::int as n from selection_decisions where application_id = ${bothApp27}`)[0]!.n).toBe(0);
   });
 });
 
@@ -166,7 +192,7 @@ describe("AT-15 configurable selection limit: releasing above it needs explicit 
   });
 
   it("releasing only 'not selected' decisions never needs confirmation, even when already above the limit", async () => {
-    const late = (await t.call("POST", "/v1/me/registrations", { as: "late-limit@example.com", body: registration({ name: "Late Limit Co" }) })).json.applications[0].id;
+    const late = lateApp26;
     await t.call("PUT", `/v1/manage/applications/${late}/decision`, { as: MANAGER, body: { outcome: "not_selected" } });
     const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: { applicationIds: [late] } });
     expect(r.status).toBe(200);

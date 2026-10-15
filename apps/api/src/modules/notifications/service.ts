@@ -47,3 +47,27 @@ export function resultMessage(o: { outcome: "selected" | "not_selected"; year: n
         : `We encourage you to consider registering for Startup Jathara ${next}.`),
   };
 }
+
+/** Wording when a released decision is corrected (TBD-37). DRAFT COPY — awaiting Management approval like the above. */
+export function correctionMessage(o: { outcome: "selected" | "not_selected"; year: number; startupName: string; hasLaterApplication: boolean }) {
+  if (o.outcome === "selected") {
+    return {
+      kind: "decision_corrected",
+      title: `Update: ${o.startupName} is selected for Startup Jathara ${o.year}`,
+      body:
+        `We are writing to correct an earlier message. After a review, ${o.startupName} has been selected for Startup Jathara ${o.year}. ` +
+        `Your ${o.year} event features are now available when you sign in. We apologise for the confusion.`,
+    };
+  }
+  const next = o.year + 1;
+  return {
+    kind: "decision_corrected",
+    title: `Update on your Startup Jathara ${o.year} application`,
+    body:
+      `We are writing to correct an earlier message. After a review, ${o.startupName} is not selected for the ${o.year} event, and ` +
+      `${o.year} event access has been removed. We apologise for the confusion. ` +
+      (o.hasLaterApplication
+        ? `Your ${next} application is separate, is not affected, and remains under review.`
+        : `We encourage you to consider registering for Startup Jathara ${next}.`),
+  };
+}

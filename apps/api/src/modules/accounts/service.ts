@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { AccountStatus, ActivationIssued, AdminUser, AdminUserList, MeResponse, Role } from "@sj/contracts";
 import type { Db, Sql } from "../../db/client.js";
 import { audit } from "../../platform/audit.js";
+import { channelFor, enqueue, TEMPLATES } from "../notifications/outbox.js";
 import { AppError, notFound } from "../../platform/errors.js";
 import { permissionsOf, type Principal } from "../../platform/principal.js";
 
@@ -21,22 +22,43 @@ export function me(p: Principal): MeResponse {
 // ---------------------------------------------------------------- activation
 
 /** Issues a single-use, time-limited activation secret for a pending account; any earlier one is revoked. */
-export async function issueActivation(sql: Sql, p: Principal, userId: string, ttlHours: number, now: Date): Promise<ActivationIssued> {
+/**
+ * Issues a single-use activation code (FR-IAM-08/10). TBD-13: the code goes to the participant's own contact on file,
+ * email if the account has one, otherwise SMS. When that channel's provider is configured, it is queued for automated
+ * delivery and the Admin never sees it; otherwise it is shown once for the Admin to hand over privately.
+ */
+export async function issueActivation(
+  sql: Sql, p: Principal, userId: string, ttlHours: number, now: Date,
+  automated: { email: boolean; sms: boolean } = { email: false, sms: false },
+): Promise<ActivationIssued> {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(now.getTime() + ttlHours * 3600_000);
-  await sql.begin(async (tx) => {
-    const [u] = await tx<{ status: string }[]>`select status from user_accounts where id = ${userId} for update`;
+  const delivery = await sql.begin(async (tx) => {
+    const [u] = await tx<{ status: string; email: string | null; mobile: string | null }[]>`
+      select status, email, mobile_e164 as mobile from user_accounts where id = ${userId} for update`;
     if (!u) throw notFound("Account");
     if (u.status !== "pending_activation") {
       throw new AppError(409, "not_pending", "Account is not awaiting activation", `This account is ${u.status.replace("_", " ")}.`);
     }
     await tx`update activation_tokens set revoked_at = ${now} where user_id = ${userId} and used_at is null and revoked_at is null`;
-    await tx`insert into activation_tokens (user_id, token_sha256, issued_by, issued_at, expires_at)
-             values (${userId}, ${sha256(token)}, ${p.account!.id}, ${now}, ${expiresAt})`;
+    const [t] = await tx<{ id: string }[]>`insert into activation_tokens (user_id, token_sha256, issued_by, issued_at, expires_at)
+             values (${userId}, ${sha256(token)}, ${p.account!.id}, ${now}, ${expiresAt}) returning id`;
+    const channel = channelFor(u);
+    let delivery: ActivationIssued["delivery"] = "manual";
+    if (channel && automated[channel]) {
+      const vars = { code: token, hours: ttlHours };
+      await enqueue(tx, {
+        userId, editionId: null, kind: "activation", email: u.email, mobile: u.mobile, subject: TEMPLATES.activation.subject,
+        emailBody: TEMPLATES.activation.email(vars), smsBody: TEMPLATES.activation.sms(vars), payload: vars,
+        idempotencyKey: `activation:${t!.id}`, sensitive: true,
+      }, now);
+      delivery = channel;
+    }
     await audit(tx, { actorUserId: p.account!.id, action: "activation.issued", entityType: "user_account", entityId: userId,
-      data: { expiresAt: expiresAt.toISOString(), delivery: "manual" } });
+      data: { expiresAt: expiresAt.toISOString(), delivery } });
+    return delivery;
   });
-  return { token, expiresAt: expiresAt.toISOString(), delivery: "manual" };
+  return { token: delivery === "manual" ? token : null, expiresAt: expiresAt.toISOString(), delivery };
 }
 
 const invalidActivation = () =>

@@ -97,6 +97,12 @@ with sync_playwright() as p:
     expect(page.get_by_text("Startup Jathara 2027")).to_be_visible()
     expect(page.get_by_text("Under review")).to_have_count(2)
     shot(page, "m3-status")
+    # TBD-37: withdraw the 2027 application in the app; 2026 stays under review.
+    page.get_by_role("button", name="Withdraw 2027 application").click()
+    page.get_by_role("button", name="Confirm: withdraw 2027").click()
+    expect(page.get_by_text("Withdrawn", exact=True)).to_be_visible()
+    expect(page.get_by_text("Under review")).to_have_count(1)
+    shot(page, "m3b-status-withdrawn")
     page.go_back()
     page.wait_for_url(re.compile(r"/home"))
     expect(page.get_by_text(f"{startup} · 2026")).to_be_visible()

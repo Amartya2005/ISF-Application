@@ -20,7 +20,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 
 | ID | Decision | Status |
 |---|---|---|
-| TBD-01 | Draft criteria set v1: RQ §7's five example criteria, equal weights, 1–5 scale. Ranking cannot run until Management approves a set. | Default — awaiting Management |
+| TBD-01 | Draft criteria set v1: RQ §7's five example criteria, equal weights, 1–5 scale. Ranking cannot run until Management approves a set. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-02 | The platform imposes no count; numbers come from the imported data. | Resolved by design |
 | TBD-03 | Shortfalls are handled as RQ §9 confirms: unassigned targets are listed, never doubled up. | Resolved by design |
 | TBD-04 | Delegates get information only for 2026 (accommodation, travel, programme). No room allocation, travel booking or check-in module. | Default — awaiting Organisers |
@@ -32,12 +32,12 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-10 | Change control: a written change request, an impact assessment and Management approval. Nothing new before the 2026 event unless it is critical. | Default — awaiting Management |
 | TBD-11 | Cut-off **5 Nov 2026, 23:59:59 IST**, inclusive. | Default — awaiting Organisers |
 | TBD-12 | **Both email and mobile.** Email OTP from launch; SMS OTP switched on once the DLT sender and template are approved. | Default — awaiting Organisers |
-| TBD-13 | Activation codes go to the participant's own contact on file: email if present, otherwise SMS. Manual hand-over stays as the fallback. Valid **72 h**. | Default — awaiting Organisers |
-| TBD-14 | Results go **in-app plus a message to the verified sign-in contact** (email, or SMS for mobile-only applicants). No WhatsApp for results. | Default — awaiting Management |
+| TBD-13 | Activation codes go to the participant's own contact on file: email if present, otherwise SMS. Manual hand-over stays as the fallback. Valid **72 h**. | Default — awaiting Organisers · **built (Phase 5)** |
+| TBD-14 | Results go **in-app plus a message to the verified sign-in contact** (email, or SMS for mobile-only applicants). No WhatsApp for results. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-15 | One startup per leader account and one application per startup per year (blocked). A matching normalised name is **flagged** for Management, not blocked. | Default — awaiting Management |
 | TBD-16 | Team members of new startups get accounts **only after selection**. The leader sends the list; the Admin adds members. | Default — awaiting Organisers |
 | TBD-17 | No extra team-management permissions for 2026. | Default — awaiting Management |
-| TBD-18 | A written reason is **required for every override** of the AI ranking. Built with ranking in Phase 5. | Default — awaiting Management |
+| TBD-18 | A written reason is **required for every override** of the AI ranking. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-19 | **Warn and require explicit confirmation.** A release above the limit is refused unless the manager confirms it, and the confirmation is audited. No hard block. | Default — awaiting Management · **built** |
 | TBD-20 | Management assigns explicitly which startups pitch and the slots. Jurors see only their own scores. | Default — awaiting Management |
 | TBD-21 | Management Team members operate "currently pitching". One named operator per venue session on the run sheet. | Default — awaiting Management |
@@ -54,16 +54,16 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-32 | Draft notice and retention schedule below and in [PRIVACY_NOTICE_DRAFT.md](/docs/PRIVACY_NOTICE_DRAFT.md). The launch gate stays shut until legal approval. | Default — awaiting **Legal** |
 | TBD-33 | Design for 3,000 accounts and 600 concurrent users; load-test at twice that. p95 < 500 ms. 99.5 % availability. RPO ≤ 5 min in critical windows, ≤ 24 h otherwise. RTO ≤ 4 h. | Default — awaiting Organisers + Budget |
 | TBD-34 | Android 7+ and iOS 16.4+ (the toolchain minimums). Test on the current and two previous OS versions, and the last two versions of the main browsers. | **Decided** |
-| TBD-35 | AI: Google Vertex AI in the same Google Cloud project as hosting, with separate service accounts per AI function. WhatsApp: Meta Cloud API directly. Email: Amazon SES (Mumbai). SMS: a DLT-compliant Indian aggregator (default MSG91) through Supabase's Send SMS hook. | Default — awaiting Organisers + Budget (contracts) |
+| TBD-35 | AI: Google Vertex AI in the same Google Cloud project as hosting, with separate service accounts per AI function. WhatsApp: Meta Cloud API directly. Email: Amazon SES (Mumbai). SMS: a DLT-compliant Indian aggregator (default MSG91) through Supabase's Send SMS hook. | Default — awaiting Organisers + Budget (contracts) · adapters **built (Phase 5)**, live accounts not yet verified |
 | TBD-36 | The organisers' legal entity owns every account (Apple, Google, WhatsApp, cloud, domain, Supabase, GitHub). Zeny2Labs gets member access. Use organisation store accounts. | Default — awaiting Organisers |
-| TBD-37 | Released decisions are final, except for an audited **correction** that needs a written reason and a **second** Management approver. Applicants may withdraw. Built before results release (Phase 5). | Default — awaiting Management |
+| TBD-37 | Released decisions are final, except for an audited **correction** that needs a written reason and a **second** Management approver. Applicants may withdraw. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-38 | **No.** 2026 registration runs on the website only. The app adds registration when it ships. | Default — awaiting Organisers |
 | TBD-39 | Text-only form, **no uploads or links** apart from the optional website. Six questions mapped to the RQ §7 example criteria, stored as **edition configuration** and frozen once applications exist. | Default — awaiting Management · **built** |
 | TBD-40 | Release 2026 decisions **on or before 20 Nov 2026**. | Default — awaiting Management |
 | TBD-41 | CSV (UTF-8), one file per category, column set v1 as built. No XLSX. Organisers sign off a real sample file. | Default — awaiting Organisers |
-| TBD-42 | Rank 2027 applications once, after the 2027 deadline closes. | Default — awaiting Management |
+| TBD-42 | Rank 2027 applications once, after the 2027 deadline closes. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-43 | Draft rubric: the approved TBD-01 criteria plus "pitch delivery", integer 1–10, equal weights. No automatic winners. | Default — awaiting Management |
-| TBD-44 | **Never shared** with applicants. | Default — awaiting Management |
+| TBD-44 | **Never shared** with applicants. | Default — awaiting Management · **built (Phase 5)** |
 | TBD-45 | **18+ only.** Applicants confirm they are 18 or older at registration; no date of birth is collected. | Default — awaiting Organisers + Legal · **built** |
 | TBD-46 | India regions: Supabase ap-south-1 (Pro plan), Cloud Run asia-south1, Vercel Pro (bom1). Indicative budget below. | Default — awaiting **Budget** |
 | OD-01 | WhatsApp verification uses a link code shown in the signed-in app. | **Decided** |
@@ -126,7 +126,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 ### TBD-18 · Written reason for overriding the AI ranking
 - **Decision:** A written reason is **mandatory for every override**. An override is selecting an application ranked outside the top *N*, or not selecting one inside it, where *N* is the selection limit (or Management's chosen cut line if no limit is set). Reasons for other decisions stay optional.
 - **Why:** RQ §7: Management can override the AI and makes every decision. A recorded reason makes overrides auditable (FR-SEL-08) without slowing the decisions that agree with the ranking.
-- **Dependency:** Override detection needs the AI rank, so this is built with ranking in Phase 5. `DecisionRequest.reason` already exists.
+- **Built (Phase 5):** a draft that overrides the latest completed ranking without a reason is refused (`422 override_reason_required`). The decision stores the AI rank, the line *N* used (`cut_line_at_decision`) and the override flag. *N* is the selection limit, or, without a limit, the cut line Management sets on the run. Without a rank or an *N*, the override is recorded as unknown and no reason is required. Tests: `apps/api/test/ranking.test.ts`.
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### TBD-19 · Does the selection limit block or only warn?
@@ -149,7 +149,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   2. An error is fixed by a **correction**. A Management member records a written reason, a **second, different** Management member approves, and the applicant is notified again. Both steps are audited.
   3. An applicant may **withdraw** their own application for a year at any time before that year's event. Withdrawing after selection removes their access to that edition; it never affects their other year (RQ §6).
 - **Why:** Management decides every outcome (RQ §7), and the project needs auditability. A two-person rule makes a correction deliberate and visible, without the risk of silent edits.
-- **Dependency:** This is built in Phase 5, before the first release of results (TBD-40). Until then, the current refusal (`decision_released`) stays.
+- **Built (Phase 5):** table `decision_corrections` (migration 0008). The two-person rule is enforced in the API, by a check constraint and by a trigger. The released-decision trigger now allows exactly the outcome change of an applied correction. Edition access follows the corrected outcome, and the applicant gets a correction message. Applicants withdraw on the website or in the app until the event's start date; a withdrawn application leaves ranking and decisions. Tests: `apps/api/test/corrections.test.ts`.
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### TBD-38 · Must the app support registration before 5 November?
@@ -194,6 +194,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 ### TBD-42 · When 2027 applications are ranked
 - **Decision:** One ranking run for 2027, after the 2027 deadline (TBD-05) has passed. Nothing is ranked or decided for 2027 while 2027 registration is still open.
 - **Why:** RQ §6 and §7 treat each year's applications as one cohort; ranking a partial cohort would be unfair to late applicants.
+- **Built (Phase 5):** ranking runs, decision drafts and releases are refused (`409 registration_open`) for **any** edition whose registration is still open. That includes 2026 before its 5 Nov cut-off, which matches the plan (ranking and decisions 6–20 Nov). The rationale, ranking a whole cohort together, applies equally to 2026. Management should confirm this reading when approving TBD-42.
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### TBD-44 · Are AI scores or explanations shared with applicants?
@@ -203,6 +204,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - Publishing AI scores would present advice as the decision.
   - Explanations can contain comparisons with other applicants (RQ §11.3).
 - **Dependency:** Legal should confirm that a request from an applicant under data-protection access rights is handled case by case.
+- **Built (Phase 5):** the applicant endpoints return no AI data, and tests assert it (`ranking.test.ts`, TBD-44).
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### TBD-45 · Can participants be under 18?
@@ -226,7 +228,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   Ranking **cannot run** until a Management user approves a criteria set (`criteria_sets.approved_by`).
 - **Why:** RQ §7: Management defines criteria and weights. The listed criteria are "examples only". Equal weights are the neutral starting point. The form questions (TBD-39) cover every criterion.
 - **Deadline:** 6 Nov 2026 (EXECUTION_PLAN §8; risk R-04). Management can still review manually if the criteria are late.
-- **Approval:** Management. **Status:** Default — awaiting Management. Built in Phase 5.
+- **Approval:** Management. **Status:** Default — awaiting Management. **Built (Phase 5):** draft v1 is seeded unapproved by migration 0008; Management creates further versions and approves them in the console (AI ranking page). An approved version is frozen by a DB trigger, and a run can use only an approved version of its own edition.
 
 ### TBD-43 · Jury scoring criteria, ranges and weights
 - **Decision:** A draft rubric for Management:
@@ -301,7 +303,8 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 ### TBD-14 · Result notification channels
 - **Decision:** In-app (built) **plus one message to the applicant's verified sign-in contact**: email, or SMS for applicants who signed in only with a mobile number. No WhatsApp. The draft wording in `notifications/service.ts` needs Management approval.
 - **Why:** An applicant may not open the app or website, and results are time-critical. The verified contact is the one address the platform knows reaches them.
-- **Dependency:** The email and SMS providers (TBD-35). The outbox channel is built in Phase 5, before results release.
+- **Built (Phase 5):** release queues one email or SMS per result in the same transaction (the `notifications` outbox), and the worker delivers it with retries (up to 6 attempts with backoff). Management sees each message's status on the application page. Without a provider, a message stays **queued** and is never reported as sent. SMS bodies carry no outcome and use DLT templates by id.
+- **Dependency:** Live email and SMS providers (TBD-35).
 - **Approval:** Management (channels and wording). **Status:** Default — awaiting Management.
 
 ## D. Identity and accounts
@@ -325,7 +328,8 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - Validity **72 hours** (`ACTIVATION_TTL_HOURS`), single use; reissuing revokes the old code (built).
   - Until the providers exist, the Admin hands the code over privately (built, `delivery: "manual"`).
 - **Why:** Sending to the contact the organisers hold binds activation to that contact (FR-IAM-10). 72 hours balances exposure of a leaked code against participants who read messages late.
-- **Dependency:** Providers (TBD-35). Automated delivery is built with the outbox in Phase 5.
+- **Built (Phase 5):** when the participant's channel has a configured provider, the code goes into the outbox and the Admin never sees it. Its stored copy is scrubbed after delivery or final failure. Otherwise the code is shown once for manual hand-over, as before.
+- **Dependency:** Providers (TBD-35).
 - **Approval:** Organisers. **Status:** Default — awaiting Organisers.
 
 ### TBD-41 · Import file format (P0)
@@ -467,6 +471,11 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   | Email | **Amazon SES, Mumbai (ap-south-1)**, SMTP for Supabase Auth and API mail | Supabase's built-in email reaches only team members at about 2 per hour, so custom SMTP is required. SES costs USD 0.10 per 1,000 emails, has an India region, and usually approves production access within 1–2 days. Needs SPF, DKIM and DMARC on the sender domain. |
   | SMS | A **DLT-compliant Indian aggregator** (default MSG91, subject to quotation), through Supabase's **Send SMS hook** | Domestic delivery under a registered sender ID. International routes skip DLT but show random numbers. Supabase's documented example for India is MSG91. |
 
+- **Built (Phase 5):**
+  - adapters for Vertex AI (with an optional ranking-only service account, impersonated), SMTP and MSG91, tested against their documented request formats with recorded responses;
+  - `pnpm --filter @sj/api ranking:eval`, which runs the evaluation on synthetic applications.
+
+  **None has been exercised against a live account yet**; that is launch checklist §B.
 - **Neutrality note:** This register was drafted with an AI assistant from Anthropic, a model vendor itself. The model platform was chosen for consolidation with hosting, not by model brand, and the adapter allows switching.
 - **Approval:** Organisers and Budget (contracts and DPAs); Legal (cross-border processing). **Status:** Default — awaiting Organisers + Budget.
 
@@ -540,6 +549,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-39 | Migration `0007_application_form.sql`: `event_editions.application_form` (six questions, version `2026-10-15`), a trigger that freezes it once applications exist, and `applications.form_version`. The API validates answers against the configuration. The website and app render the questions. |
 | TBD-45 | `adultDeclaration` (must be `true`) in `RegistrationRequest`, in the website and app forms, and recorded in the `registration.submitted` audit event. |
 | All | Code comments, console text and docs now cite this register instead of "not decided". |
+| Phase 5 (15 Oct 2026) | Migrations `0008_ranking_selection.sql` and `0009_ranking_worker_set_role.sql`, and the ranking, outbox and correction modules build TBD-01, -13, -14, -18, -37, -42 and -44 and the TBD-35 adapters. See [PHASES.md](PHASES.md) for details. |
 
 Sources for vendor and legal facts (checked 15 Oct 2026):
 - [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp)

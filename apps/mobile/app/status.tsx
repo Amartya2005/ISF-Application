@@ -12,6 +12,8 @@ export default function Status() {
   const { api } = useSession();
   const [data, setData] = useState<MyApplicationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   useFocusEffect(useCallback(() => {
     api.myApplications().then(setData, (e) => setError(messageOf(e)));
   }, [api]));
@@ -37,6 +39,18 @@ export default function Status() {
             <Badge text={STATUS_LABEL[a.status]} tone={STATUS_TONE[a.status]} />
           </View>
           <P muted small>Submitted {formatIst(a.submittedAt)} IST{a.decidedAt ? ` · Decision released ${formatIst(a.decidedAt)} IST` : ""}</P>
+          {a.canWithdraw && (confirming === a.id ? (
+            <>
+              <P small>{`Withdraw your ${a.edition} application? This cannot be undone.${a.status === "selected" ? ` You will lose access to the ${a.edition} event.` : ""} Your other year is not affected.`}</P>
+              <Button title={`Confirm: withdraw ${a.edition}`} busy={busy} onPress={() => {
+                setBusy(true);
+                api.withdrawApplication(a.id).then((d) => { setData(d); setConfirming(null); }, (e) => setError(messageOf(e))).finally(() => setBusy(false));
+              }} />
+              <Button title="Keep my application" kind="secondary" onPress={() => setConfirming(null)} />
+            </>
+          ) : (
+            <Button title={`Withdraw ${a.edition} application`} kind="secondary" onPress={() => setConfirming(a.id)} />
+          ))}
         </Card>
       ))}
     </Screen>

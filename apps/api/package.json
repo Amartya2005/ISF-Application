@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "dev:worker": "tsx watch --env-file-if-exists=../../.env src/worker.ts",
     "build": "tsup",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
-    "staging:verify": "tsx scripts/staging-verify.ts"
+    "staging:verify": "tsx scripts/staging-verify.ts",
+    "ranking:eval": "tsx scripts/ranking-eval.ts"
   },
   "dependencies": {
     "@fastify/cors": "11.3.1",
@@ -20,6 +23,7 @@
     "@sj/contracts": "workspace:*",
     "fastify": "5.12.7",
     "jose": "6.2.12",
+    "nodemailer": "10.0.12",
     "postgres": "3.4.9",
     "zod": "4.6.7"
   },

@@ -1,8 +1,8 @@
 """Browser smoke test of the M1 vertical slice through the real screens.
 
 website: sign in -> register for both years -> status
-console: management sign-in -> draft "select" for 2026 -> release
-website: 2026 Selected, 2027 still under review, congratulation message
+console: management sign-in -> sees the application; decisions refused while registration is open (TBD-42)
+website: withdraw the 2027 application (TBD-37); 2026 stays under review
 console: Admin without a management grant is refused
 
 Usage: python3 scripts/e2e_smoke.py [screenshot_dir]   (API on :4000, web on :3000, console on :3001)
@@ -81,23 +81,20 @@ with sync_playwright() as p:
     con.wait_for_url(re.compile(r"/applications"))
     row = con.locator("tr", has_text=startup)
     expect(row).to_be_visible()
+    # TBD-42: decisions open only after registration closes, so the whole cohort is reviewed together.
     row.get_by_role("button", name="Select", exact=True).click()
-    expect(row.get_by_text("decision_drafted")).to_be_visible()
+    expect(con.locator(".notice-error")).to_contain_text("only after registration closes")
     web.reload()
-    expect(web.get_by_text("Under review")).to_have_count(2)                 # drafts stay invisible to applicants
-    shot(con, "4-console-draft")
-    con.once("dialog", lambda d: d.accept())
-    con.get_by_role("button", name="Release decisions").click()
-    expect(con.locator(".notice-ok")).to_contain_text(re.compile(r"Released \d+ \(\d+ selected"))
-    expect(row.get_by_text("selected", exact=True)).to_be_visible()
-    shot(con, "5-console-released")
+    expect(web.get_by_text("Under review")).to_have_count(2)
+    shot(con, "4-console-registration-open")
+    # Decisions, release and results are covered after the deadline by scripts/e2e_ranking.py (API with DEV_NOW).
 
-    # ---- applicant sees independent results
-    web.reload()
-    expect(web.get_by_text("Selected", exact=True)).to_be_visible()
+    # ---- the applicant withdraws the 2027 application; 2026 is untouched (TBD-37)
+    web.get_by_role("button", name="Withdraw 2027 application").click()
+    web.get_by_role("button", name="Confirm: withdraw 2027").click()
+    expect(web.get_by_text("Withdrawn", exact=True)).to_be_visible()
     expect(web.get_by_text("Under review")).to_have_count(1)
-    expect(web.get_by_text(re.compile(f"Congratulations — {startup}"))).to_be_visible()
-    shot(web, "6-status-selected")
+    shot(web, "5-status-withdrawn-2027")
 
     # ---- admin without a management grant is refused
     adm = browser.new_page()

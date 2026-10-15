@@ -8,14 +8,17 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 - staff MFA is on (`REQUIRE_STAFF_MFA` defaults to true and may not be `false`);
 - `CORS_ORIGINS` lists only `https://` production origins;
 - the privacy notice version is no longer a `draft-*` version (`PRIVACY_NOTICE_VERSION` in `packages/contracts`);
+- AI ranking uses a real model (`RANKING_PROVIDER=vertex`), never the development stub, which is not an AI;
+- no message provider is set to `log` (which reports messages as sent without sending them), and `DEV_NOW` is not set;
 - `LAUNCH_APPROVED=true` is set. Set it **only** after every item below is checked and signed off.
 
 ## A. Accounts and environments (TBD-36, TBD-46)
 
-- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0007 applied, Data API closed (see [docs/STAGING.md](/docs/STAGING.md)). Done 15 Oct 2026.
+- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0009 applied, Data API closed (see [docs/STAGING.md](/docs/STAGING.md)). Done 15 Oct 2026.
 - [ ] Organisation-owned Supabase **production** project (ap-south-1) on the Pro plan, with PITR on during the critical windows (TBD-33, TBD-46; budget approval needed). Never use any personal project.
 - [ ] Cloud, domain, Vercel, GitHub organisation, WhatsApp Business and Apple/Google store accounts are owned by the organisers' legal entity (TBD-36). Store accounts are **organisation** accounts (a D-U-N-S number is needed; request it early). Zeny2Labs has member access only.
-- [ ] Secrets are stored in the secret manager. `SUPABASE_SERVICE_ROLE_KEY` goes to the API service only, never to any `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value.
+- [ ] Secrets are stored in the secret manager: `SUPABASE_SERVICE_ROLE_KEY`, `SMTP_PASS` and `MSG91_AUTH_KEY` go to the API and worker services only, never to any `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value. Ranking uses its own service account (`RANKING_VERTEX_SERVICE_ACCOUNT`, FR-RNK-12), separate from the future Help Desk's.
+- [ ] Background workers are deployed: either `RUN_WORKERS=true` on an API host that keeps CPU between requests, or a separate `start:worker` service with `RUN_WORKERS=false` on the API.
 - [ ] Repository made **private** until launch approval (OD-04, owner action). It is currently public.
 
 ## B. Live Supabase staging tests (B-06). The code is tested against Supabase-shaped data, not a live project.
@@ -41,6 +44,13 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 - [ ] Staff TOTP MFA: enrol, verify, get aal2; without aal2 → `mfa_required` on every privileged endpoint.
 - [ ] Mobile app on a real Android and iPhone: every case in [docs/DEVICE_TEST_PROTOCOL.md](/docs/DEVICE_TEST_PROTOCOL.md) (D1–D12) passes, and the iOS reinstall behaviour (D8) is decided.
 - [ ] `staging:verify` reports 0 failures and 0 skips, with all optional settings provided.
+
+**Phase 5 providers, live** (the adapters are tested only against recorded request formats):
+
+- [ ] **Ranking model chosen by evaluation** (TBD-35): `pnpm --filter @sj/api ranking:eval` passes every check against the Vertex AI model and region to be used, and the report is kept as evidence. The data-processing terms for Vertex AI are reviewed (Legal, cross-border processing).
+- [ ] A ranking run on staging with the real model over a synthetic cohort completes. Results look sensible to a Management reviewer, and steering attempts are flagged.
+- [ ] **Result and activation email through Amazon SES**: a release and an activation code reach Gmail, Outlook and an institutional inbox, not spam, and show as `sent` in the console. SES production access granted; SPF, DKIM and DMARC pass.
+- [ ] **Result and activation SMS through MSG91**: DLT templates for the result, correction and activation messages are registered and their ids configured. Messages arrive on Jio, Airtel, Vi and BSNL. Failures show as `failed` in the console after the retries.
 
 ## C. Decision approvals ([docs/DECISIONS.md](/docs/DECISIONS.md))
 
@@ -91,6 +101,7 @@ Only when every row above is filled in: set `LAUNCH_APPROVED=true` in the produc
 - staff MFA is on;
 - `CORS_ORIGINS` is HTTPS-only;
 - the privacy notice version is not a draft;
+- `RANKING_PROVIDER=vertex` (not the stub), no `log` message provider, no `DEV_NOW`;
 - `LAUNCH_APPROVED=true`.
 
 It **cannot** check that the operational items above have evidence and signatures. `LAUNCH_APPROVED` is therefore a human attestation, and it must be tightly controlled:

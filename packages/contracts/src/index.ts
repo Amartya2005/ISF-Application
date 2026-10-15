@@ -146,8 +146,11 @@ export const RegistrationRequest = z.object({
 });
 export type RegistrationRequest = z.input<typeof RegistrationRequest>;
 
-/** What applicants may see. Internal states and unreleased drafts collapse to "under_review" (FR-SEL-09). */
-export const ApplicantStatus = z.enum(["under_review", "selected", "not_selected"]);
+/**
+ * What applicants may see. Internal states and unreleased drafts collapse to "under_review" (FR-SEL-09); AI ranks,
+ * scores and explanations are never shown to applicants (TBD-44). "withdrawn" is the applicant's own act (TBD-37).
+ */
+export const ApplicantStatus = z.enum(["under_review", "selected", "not_selected", "withdrawn"]);
 export type ApplicantStatus = z.infer<typeof ApplicantStatus>;
 
 export const INTERNAL_STATUSES = [
@@ -158,11 +161,12 @@ export const INTERNAL_STATUSES = [
   "decision_drafted",
   "selected",
   "not_selected",
+  "withdrawn",
 ] as const;
 export type InternalStatus = (typeof INTERNAL_STATUSES)[number];
 
 export function applicantStatus(s: InternalStatus): ApplicantStatus {
-  return s === "selected" || s === "not_selected" ? s : "under_review";
+  return s === "selected" || s === "not_selected" || s === "withdrawn" ? s : "under_review";
 }
 
 export const MyApplication = z.object({
@@ -171,6 +175,8 @@ export const MyApplication = z.object({
   status: ApplicantStatus,
   submittedAt: z.string(),
   decidedAt: z.string().nullable(),
+  /** TBD-37: the applicant may withdraw this year's application until that year's event starts. */
+  canWithdraw: z.boolean(),
 });
 export type MyApplication = z.infer<typeof MyApplication>;
 
@@ -202,6 +208,165 @@ export type ReleaseRequest = z.infer<typeof ReleaseRequest>;
 
 export const SelectionLimitRequest = z.object({ limit: z.number().int().positive().max(10000).nullable() });
 
+// ---------------------------------------------------------------- AI ranking (Phase 5, FR-RNK-*, TBD-01)
+/** One evaluation criterion. Scores are integers from `min` to `max`, with one line of guidance per score. */
+export const Criterion = z
+  .object({
+    key: z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, "Use lower-case letters, digits and underscores"),
+    label: z.string().trim().min(1).max(80),
+    description: z.string().trim().min(1).max(300),
+    weight: z.number().int().min(1).max(100),
+    min: z.number().int().min(0).max(10),
+    max: z.number().int().min(1).max(10),
+    guidance: z.array(z.string().trim().min(1).max(200)).min(2).max(11),
+  })
+  .refine((c) => c.max > c.min, { message: "max must be greater than min", path: ["max"] })
+  .refine((c) => c.guidance.length === c.max - c.min + 1, { message: "Give one line of guidance for every score", path: ["guidance"] });
+export type Criterion = z.infer<typeof Criterion>;
+
+/** Management defines the criteria and weights (FR-RNK-01). Weights are whole percentages that add up to 100. */
+export const CriteriaList = z
+  .array(Criterion)
+  .min(1)
+  .max(10)
+  .superRefine((list, ctx) => {
+    const keys = new Set<string>();
+    list.forEach((c, i) => {
+      if (keys.has(c.key)) ctx.addIssue({ code: "custom", message: "Criterion keys must be unique", path: [i, "key"] });
+      keys.add(c.key);
+    });
+    const sum = list.reduce((a, c) => a + c.weight, 0);
+    if (sum !== 100) ctx.addIssue({ code: "custom", message: `Weights must add up to 100 (they add up to ${sum})`, path: [] });
+  });
+
+export const CriteriaSetCreate = z.object({ criteria: CriteriaList, note: z.string().trim().max(500).optional() });
+export type CriteriaSetCreate = z.input<typeof CriteriaSetCreate>;
+
+export const CriteriaSet = z.object({
+  id: z.string(),
+  edition: z.number().int(),
+  version: z.number().int(),
+  criteria: z.array(Criterion),
+  note: z.string().nullable(),
+  createdBy: z.string().nullable(),
+  createdAt: z.string(),
+  approvedBy: z.string().nullable(),
+  approvedAt: z.string().nullable(),
+  usedByRuns: z.number().int(),
+});
+export type CriteriaSet = z.infer<typeof CriteriaSet>;
+
+/**
+ * Why an application needs a human look (FR-RNK-09, -13). `possible_prompt_injection` is scored normally but flagged;
+ * the others are not ranked at all and go to manual review.
+ */
+export const RANKING_FLAGS = ["possible_prompt_injection", "missing_data", "ai_output_invalid", "ai_unavailable"] as const;
+export type RankingFlag = (typeof RANKING_FLAGS)[number];
+
+export const RankingRunStatus = z.enum(["queued", "running", "completed", "failed"]);
+export const RankingRunSummary = z.object({
+  id: z.string(),
+  edition: z.number().int(),
+  criteriaSetId: z.string(),
+  criteriaVersion: z.number().int(),
+  modelRef: z.string(),
+  promptVersion: z.string(),
+  status: RankingRunStatus,
+  startedBy: z.string(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  cutLine: z.number().int().nullable(),
+  error: z.string().nullable(),
+  counts: z.object({ total: z.number().int(), scored: z.number().int(), flagged: z.number().int(), pending: z.number().int() }),
+});
+export type RankingRunSummary = z.infer<typeof RankingRunSummary>;
+
+export const CriterionScore = z.object({
+  key: z.string(), label: z.string(), score: z.number().int(), min: z.number().int(), max: z.number().int(), explanation: z.string(),
+});
+export type CriterionScore = z.infer<typeof CriterionScore>;
+
+export const RankingResultItem = z.object({
+  applicationId: z.string(),
+  startupName: z.string(),
+  applicationStatus: z.enum(INTERNAL_STATUSES),
+  state: z.enum(["pending", "scored", "flagged"]),
+  rank: z.number().int().nullable(),
+  totalScore: z.number().nullable(),
+  scores: z.array(CriterionScore),
+  summary: z.string().nullable(),
+  flags: z.array(z.string()),
+});
+export type RankingResultItem = z.infer<typeof RankingResultItem>;
+
+export const RankingRunDetail = RankingRunSummary.extend({
+  criteria: z.array(Criterion),
+  selectionLimit: z.number().int().nullable(),
+  results: z.array(RankingResultItem),
+});
+export type RankingRunDetail = z.infer<typeof RankingRunDetail>;
+
+export const StartRankingRunRequest = z.object({ criteriaSetId: z.string().uuid() });
+export const CutLineRequest = z.object({ cutLine: z.number().int().positive().max(10000).nullable() });
+
+/**
+ * TBD-18: an override is selecting an application ranked outside the top N, or not selecting one inside it. N is the
+ * edition's selection limit, or the run's cut line when no limit is set. Without a rank or an N it cannot be decided.
+ */
+export function overrideOf(outcome: "selected" | "not_selected", rank: number | null, cutLine: number | null): boolean | null {
+  if (rank === null || cutLine === null) return null;
+  return outcome === "selected" ? rank > cutLine : rank <= cutLine;
+}
+
+// ---------------------------------------------------------------- decision corrections (TBD-37)
+export const DecisionCorrectionRequest = z.object({
+  outcome: z.enum(["selected", "not_selected"]),
+  reason: z.string().trim().min(1, "Give the reason for the correction").max(2000),
+});
+export type DecisionCorrectionRequest = z.infer<typeof DecisionCorrectionRequest>;
+export const CorrectionReviewRequest = z.object({ note: z.string().trim().max(2000).optional() });
+
+export const DecisionCorrection = z.object({
+  id: z.string(),
+  applicationId: z.string(),
+  edition: z.number().int(),
+  startupName: z.string(),
+  fromOutcome: z.enum(["selected", "not_selected"]),
+  toOutcome: z.enum(["selected", "not_selected"]),
+  reason: z.string(),
+  requestedById: z.string(),
+  requestedBy: z.string(),
+  requestedAt: z.string(),
+  status: z.enum(["pending", "applied", "rejected", "cancelled"]),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  reviewNote: z.string().nullable(),
+});
+export type DecisionCorrection = z.infer<typeof DecisionCorrection>;
+
+export const OutboxStatus = z.object({
+  kind: z.string(),
+  channel: z.enum(["in_app", "push", "email", "sms", "whatsapp"]),
+  status: z.enum(["queued", "sent", "failed", "read"]),
+  createdAt: z.string(),
+  sentAt: z.string().nullable(),
+});
+export type OutboxStatus = z.infer<typeof OutboxStatus>;
+
+export const ApplicationAi = z.object({
+  runId: z.string(),
+  criteriaVersion: z.number().int(),
+  state: z.enum(["pending", "scored", "flagged"]),
+  rank: z.number().int().nullable(),
+  totalScore: z.number().nullable(),
+  /** The N used for override detection: the selection limit, or the run's cut line when no limit is set. */
+  cutLine: z.number().int().nullable(),
+  scores: z.array(CriterionScore),
+  summary: z.string().nullable(),
+  flags: z.array(z.string()),
+});
+export type ApplicationAi = z.infer<typeof ApplicationAi>;
+
 export const ManageApplication = z.object({
   id: z.string(),
   edition: z.number().int(),
@@ -225,11 +390,21 @@ export const ManageApplication = z.object({
       decidedBy: z.string(),
       decidedAt: z.string(),
       releasedAt: z.string().nullable(),
+      /** FR-SEL-08 / TBD-18: null when no AI rank or no cut line existed at decision time. */
+      isOverride: z.boolean().nullable(),
+      aiRankAtDecision: z.number().int().nullable(),
+      correctedAt: z.string().nullable(),
     })
     .nullable(),
   formAnswers: z.record(z.string(), z.unknown()),
   /** Version of the edition's application form this application answered (null for applications made before 0007). */
   formVersion: z.string().nullable(),
+  withdrawnAt: z.string().nullable(),
+  /** Latest completed ranking run's view of this application (Management only; never shown to applicants). */
+  ai: ApplicationAi.nullable(),
+  /** FR-SEL-03: delivery status of the result messages. */
+  notifications: z.array(OutboxStatus),
+  corrections: z.array(DecisionCorrection),
 });
 export type ManageApplication = z.infer<typeof ManageApplication>;
 
@@ -368,11 +543,13 @@ export const RoleGrantRequest = z.object({ role: z.enum(ROLES), edition: z.numbe
 export type RoleGrantRequest = z.infer<typeof RoleGrantRequest>;
 
 export const ActivationIssued = z.object({
-  /** Shown once. Only its hash is stored. */
-  token: z.string(),
+  /**
+   * Shown once, and only for manual delivery. With automated delivery (TBD-13) the code goes straight to the
+   * participant's own email or mobile and the Admin never sees it. Only its hash is stored.
+   */
+  token: z.string().nullable(),
   expiresAt: z.string(),
-  /** TBD-13: automated delivery to the participant's own email or mobile follows once providers are contracted; until then the Admin hands it over. */
-  delivery: z.literal("manual"),
+  delivery: z.enum(["manual", "email", "sms"]),
 });
 export type ActivationIssued = z.infer<typeof ActivationIssued>;
 
@@ -405,7 +582,7 @@ export type DevSessionRequest = z.input<typeof DevSessionRequest>;
 // ---------------------------------------------------------------- post-sign-in redirects (open-redirect protection)
 /** Internal destinations each web interface may return to after sign-in or MFA. Anything else falls back. */
 export const WEB_RETURN_PATHS = ["/", "/register", "/status", "/activate", "/privacy"] as const;
-export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/users", "/imports"] as const;
+export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/users", "/imports"] as const;
 
 const REDIRECT_BASE = "https://internal.invalid";
 

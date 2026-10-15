@@ -14,7 +14,7 @@ It is an implementation baseline, not a complete delivery of every feature descr
 
 The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (ADR-001). The 10 delivery phases are listed in [`docs/PHASES.md`](docs/PHASES.md).
 
-> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md) is signed off. **The API enforces this:** with `NODE_ENV=production` it refuses to start until Supabase sign-in, staff MFA, HTTPS-only origins, an approved (non-draft) privacy notice and `LAUNCH_APPROVED=true` are all in place.
+> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md) is signed off. **The API enforces this:** with `NODE_ENV=production` it refuses to start until Supabase sign-in, staff MFA, HTTPS-only origins, an approved (non-draft) privacy notice, a real ranking model (not the development stub), no log-only message providers and `LAUNCH_APPROVED=true` are all in place.
 
 ## Project status
 
@@ -50,18 +50,25 @@ The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (AD
   - the application form's six questions are edition configuration (migration 0007), served to the website and app and frozen once applications exist (TBD-39);
   - applicants confirm they are 18 or older (TBD-45);
   - releasing decisions above the selection limit needs explicit, audited confirmation (TBD-19).
+- **Phase 5, AI ranking and selection** (details in [`docs/PHASES.md`](docs/PHASES.md)):
+  - versioned criteria sets that Management creates and approves; draft v1 (TBD-01) ships unapproved;
+  - ranking runs over a whole edition after its registration closes (TBD-42), scored by a model adapter (Google Vertex AI, or a development stub that is **not an AI**), validated, weighted and ranked outside the model; incomplete or invalid results go to manual review; steering attempts are flagged;
+  - the ranking worker runs as a database role that cannot write decisions or read contact data (AT-11);
+  - overrides of the ranking need a written reason (TBD-18); released decisions change only through a two-person correction (TBD-37); applicants can withdraw a year's application;
+  - result, correction and activation messages by email or SMS through an outbox with per-message status (TBD-13, TBD-14);
+  - `pnpm --filter @sj/api ranking:eval` evaluates a model on synthetic applications.
 
 The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
 
-- 129 API integration tests against PostgreSQL;
+- 292 API tests (integration tests against PostgreSQL, plus unit tests);
 - 4 mobile unit tests;
-- five browser flows: website + Management, Admin import + activation, phone sign-in, the mobile app at phone size, and staff MFA. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
+- seven browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, and AI ranking through to a two-person correction. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
 
 ### Planned / not yet complete
 
-- Production identity configuration (Supabase production) and automated delivery of activation codes to the participant's own email or mobile (TBD-13; codes are handed over manually until the email and SMS providers are contracted).
+- Production identity configuration (Supabase production).
+- Live provider accounts: Vertex AI for ranking, Amazon SES for email, MSG91 with DLT templates for SMS (TBD-35). The adapters are built and tested against recorded request formats, not yet against live accounts. Until a provider is configured, messages stay queued and activation codes are handed over manually.
 - Organisers' sign-off of import column set v1 on a real sample file (TBD-41).
-- AI-assisted startup ranking and criteria management.
 - Jury scoring UI and workflow.
 - Random volunteer assignment and reassignment UI.
 - Event content, notices and push notifications.
@@ -209,7 +216,7 @@ pnpm dev:mobile
 Default local URLs:
 
 - Website: <http://localhost:3000>
-- Console: <http://localhost:3001> (`manager@dev.local` sees Applications; `admin@dev.local` sees Accounts and Imports)
+- Console: <http://localhost:3001> (`manager@dev.local` and `manager2@dev.local` see Applications and AI ranking; `admin@dev.local` sees Accounts and Imports)
 - API: <http://localhost:4000>
 
 ### 5. Run the mobile app on a phone (optional)
@@ -244,7 +251,19 @@ python3 scripts/e2e_redirect.py                           # crafted ?next= links
 python3 scripts/e2e_mfa.py /tmp/startup-jathara-shots
 # mobile: serve the web build on :8081 and add http://localhost:8081 to CORS_ORIGINS, then
 pnpm --filter @sj/mobile export:web && python3 scripts/e2e_mobile.py /tmp/startup-jathara-shots
+# AI ranking (Phase 5) runs after the 2026 deadline, so use a fresh database, the synthetic cohort and a pinned clock:
+SEED_DEMO_APPLICATIONS=1 pnpm db:seed
+DEV_NOW=2026-11-06T10:00:00+05:30 RANKING_PROVIDER=stub NOTIFY_EMAIL_PROVIDER=log pnpm dev:api
+python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
 ```
+
+Model evaluation on synthetic applications (no database, no real data). With the stub it checks the harness only:
+
+```bash
+RANKING_PROVIDER=vertex RANKING_VERTEX_PROJECT=<project> RANKING_VERTEX_MODEL=<model> pnpm --filter @sj/api ranking:eval
+```
+
+Background work (ranking runs, the email/SMS outbox) runs inside the API process by default (`RUN_WORKERS=true`). On hosts that throttle CPU between requests, run `pnpm --filter @sj/api start:worker` as its own service and set `RUN_WORKERS=false` on the API.
 
 CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) to install dependencies, typecheck, run API integration tests against PostgreSQL and build the workspaces.
 
@@ -263,6 +282,14 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72, as recommended in TBD-13; awaiting organiser approval) |
 | `REQUIRE_STAFF_MFA` | Require MFA (aal2) for Admin, Management and Support. On by default in production and cannot be turned off there. Off locally unless set to `true` |
 | `LAUNCH_APPROVED` | Production start gate. Set to `true` only after `docs/LAUNCH_CHECKLIST.md` is signed off |
+| `RUN_WORKERS` | Run ranking and outbox workers inside the API process (default `true`) |
+| `RANKING_PROVIDER` | `stub` (development only, **not an AI**, refused in production) or `vertex` |
+| `RANKING_VERTEX_PROJECT`, `RANKING_VERTEX_LOCATION`, `RANKING_VERTEX_MODEL` | Vertex AI for ranking (location default `asia-south1`; the model is chosen by `ranking:eval`, TBD-35) |
+| `RANKING_VERTEX_SERVICE_ACCOUNT` | A service account used only for ranking, impersonated by the runtime identity (FR-RNK-12) |
+| `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox: `none` (messages stay queued), `log` (development only) or `smtp` (Amazon SES) |
+| `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION` | SMS outbox: `none`, `log` (development only) or `msg91` with DLT-registered template ids |
+| `PUBLIC_WEB_URL` | Website address used in result messages |
+| `DEV_NOW` | Development only: pins the API clock (refused in production and outside `AUTH_MODE=dev`) |
 | `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone`. Unset allows both (development). Deployed environments set `email` until the DLT-registered SMS sender is live, then `email,phone` (TBD-12) |
 | `CORS_ORIGINS` | Explicit allowlist of trusted web origins |
 | `NEXT_PUBLIC_API_URL` | API URL used by website and console |

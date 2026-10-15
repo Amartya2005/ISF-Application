@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError, formatIst } from "@sj/client";
-import { INTERNAL_STATUSES, type InternalStatus, type ManageApplicationList } from "@sj/contracts";
+import { INTERNAL_STATUSES, type DecisionCorrection, type InternalStatus, type ManageApplicationList } from "@sj/contracts";
+import { FLAG_LABELS } from "@/lib/ranking";
 import { api, useSessionEmail } from "@/lib/session";
 import { MfaPrompt } from "../mfa-prompt";
 
@@ -20,12 +21,14 @@ function Applications() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [limit, setLimit] = useState("");
+  const [pending, setPending] = useState<DecisionCorrection[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const d = await api.manage.list(year, status || undefined);
       setData(d);
+      setPending(await api.manage.corrections(year, "pending"));
       setLimit(d.selectionLimit?.toString() ?? "");
     } catch (e) {
       setData(null);
@@ -72,6 +75,12 @@ function Applications() {
       {error === "mfa_required" ? <MfaPrompt next="/applications" /> : error && <p className="notice notice-error" role="alert">{error}</p>}
       {message && <p className="notice notice-ok">{message}</p>}
 
+      {pending.length > 0 && (
+        <div className="notice notice-warn" style={{ marginBottom: 16 }}>
+          <strong>{pending.length} correction{pending.length === 1 ? "" : "s"} of released decisions waiting for a second approver:</strong>{" "}
+          {pending.map((c, i) => <span key={c.id}>{i ? ", " : ""}<Link href={`/applications/${c.applicationId}`}>{c.startupName}</Link> (asked by {c.requestedBy})</span>)}
+        </div>
+      )}
       {data && (
         <>
           <div className="release-bar">
@@ -126,23 +135,27 @@ function Applications() {
             <div className="table-wrap">
               <table>
                 <thead>
-                  <tr><th>Startup</th><th>Leader</th><th>Submitted (IST)</th><th>Other year</th><th>Status</th><th>Decision</th></tr>
+                  <tr><th>AI rank</th><th>Startup</th><th>Leader</th><th>Submitted (IST)</th><th>Other year</th><th>Status</th><th>Decision</th></tr>
                 </thead>
                 <tbody>
                   {data.items.map((a) => {
                     const released = !!a.decision?.releasedAt;
                     return (
                       <tr key={a.id}>
+                        <td>{a.ai?.rank ?? <span className="muted small">{a.ai ? "manual review" : "—"}</span>}</td>
                         <td>
                           <Link href={`/applications/${a.id}`}><strong>{a.startup.name}</strong></Link>
-                          {a.flags.map((f) => <div key={f}><span className="flag">{f.replace(/_/g, " ")}</span></div>)}
+                          {[...a.flags, ...(a.ai?.flags ?? [])].map((f) => <div key={f}><span className="flag">{FLAG_LABELS[f] ?? f.replace(/_/g, " ")}</span></div>)}
+                          {a.decision?.isOverride && <div><span className="flag">override</span></div>}
                         </td>
                         <td>{a.leader.fullName}<div className="muted small">{a.leader.email}<br />{a.leader.mobile}</div></td>
                         <td>{formatIst(a.submittedAt)}</td>
                         <td className="small">{a.otherEditions.map((o) => `${o.edition}: ${o.status.replace(/_/g, " ")}`).join(", ") || "—"}</td>
                         <td><span className="status">{a.status}</span></td>
                         <td>
-                          {released ? (
+                          {a.status === "withdrawn" ? (
+                            <span className="muted small">Withdrawn by the applicant</span>
+                          ) : released ? (
                             <span className="muted small">Released {formatIst(a.decision!.releasedAt!)}</span>
                           ) : (
                             <div className="actions" style={{ marginTop: 0 }}>
@@ -165,7 +178,9 @@ function Applications() {
           )}
           <p className="muted small" style={{ marginTop: 12 }}>
             Decisions stay as drafts until released. Releasing notifies applicants and grants selected teams access to the {year} event.
-            AI ranking is added in milestone M3; every decision remains a human decision.
+            Ranked applications are listed in AI rank order; the AI only advises and every decision is a human decision. Decisions open after
+            registration closes (TBD-42). Selecting below the cut line or not selecting above it is an override and needs a reason: open the
+            application to give one.
           </p>
         </>
       )}

@@ -7,7 +7,10 @@ import { createTestApp, registration, type TestApp } from "./helpers.js";
 const base = { DATABASE_URL: "postgres://x@localhost/x", DEV_AUTH_SECRET: "d".repeat(40) };
 const prodSupabase = { ...base, NODE_ENV: "production", AUTH_MODE: "supabase", SUPABASE_URL: "https://p.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "s".repeat(40) };
 
-const ready = { ...prodSupabase, CORS_ORIGINS: "https://startupjathara.example,https://console.startupjathara.example", LAUNCH_APPROVED: "true" };
+const ready = {
+  ...prodSupabase, CORS_ORIGINS: "https://startupjathara.example,https://console.startupjathara.example", LAUNCH_APPROVED: "true",
+  RANKING_PROVIDER: "vertex", RANKING_VERTEX_PROJECT: "isf-prod", RANKING_VERTEX_MODEL: "model-under-evaluation",
+};
 const APPROVED = { privacyNoticeVersion: "2026-11-01" };
 
 describe("production launch gate and staff MFA policy (fail closed)", () => {
@@ -29,10 +32,29 @@ describe("production launch gate and staff MFA policy (fail closed)", () => {
     expect(() => loadConfig({ ...ready, AUTH_MODE: "dev" } as never, APPROVED)).toThrow(/AUTH_MODE must be supabase/);
     expect(() => loadConfig({ ...ready, CORS_ORIGINS: "http://localhost:3000" } as never, APPROVED)).toThrow(/CORS_ORIGINS must list only/);
   });
+  it("treats an empty LAUNCH_APPROVED or REQUIRE_STAFF_MFA (as in .env.example) as unset, never as approval or opt-out", () => {
+    expect(() => loadConfig({ ...ready, LAUNCH_APPROVED: "" } as never, APPROVED)).toThrow(/LAUNCH_APPROVED=true is not set/);
+    expect(loadConfig({ ...ready, REQUIRE_STAFF_MFA: "" } as never, APPROVED).requireStaffMfa).toBe(true);
+    expect(loadConfig({ ...base, REQUIRE_STAFF_MFA: "", LAUNCH_APPROVED: "" } as never).requireStaffMfa).toBe(false);
+  });
   it("lists every unmet item at once", () => {
     let msg = "";
     try { loadConfig({ ...base, NODE_ENV: "production" } as never); } catch (e) { msg = (e as Error).message; }
-    expect(msg.match(/^- /gm)?.length).toBe(4);   // auth mode, CORS, draft privacy notice, launch sign-off
+    expect(msg.match(/^- /gm)?.length).toBe(5);   // auth mode, CORS, draft privacy notice, stub ranking, launch sign-off
+  });
+  it("refuses the development ranking stub, log-only message providers and a pinned clock in production (Phase 5)", () => {
+    expect(() => loadConfig({ ...ready, RANKING_PROVIDER: "stub" } as never, APPROVED)).toThrow(/RANKING_PROVIDER must be vertex/);
+    expect(() => loadConfig({ ...ready, NOTIFY_EMAIL_PROVIDER: "log" } as never, APPROVED)).toThrow(/=log is for development only/);
+    expect(() => loadConfig({ ...ready, NOTIFY_SMS_PROVIDER: "log" } as never, APPROVED)).toThrow(/=log is for development only/);
+    expect(() => loadConfig({ ...ready, DEV_NOW: "2026-11-06T10:00:00+05:30" } as never, APPROVED)).toThrow(/DEV_NOW must not be set/);
+  });
+  it("allows DEV_NOW only for development sign-in, and requires provider settings when a provider is chosen", () => {
+    expect(loadConfig({ ...base, DEV_NOW: "2026-11-06T10:00:00+05:30" } as never).devNow?.toISOString()).toBe("2026-11-06T04:30:00.000Z");
+    expect(() => loadConfig({ ...base, AUTH_MODE: "supabase", SUPABASE_URL: "https://p.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "s".repeat(40),
+      DEV_NOW: "2026-11-06T10:00:00+05:30" } as never)).toThrow(/DEV_NOW is allowed only/);
+    expect(() => loadConfig({ ...base, RANKING_PROVIDER: "vertex" } as never)).toThrow(/RANKING_VERTEX_PROJECT and RANKING_VERTEX_MODEL are required/);
+    expect(() => loadConfig({ ...base, NOTIFY_EMAIL_PROVIDER: "smtp" } as never)).toThrow(/SMTP_HOST and NOTIFY_EMAIL_FROM are required/);
+    expect(() => loadConfig({ ...base, NOTIFY_SMS_PROVIDER: "msg91" } as never)).toThrow(/MSG91_AUTH_KEY is required/);
   });
   it("leaves MFA off by default in development, switchable for testing", () => {
     expect(loadConfig({ ...base } as never).requireStaffMfa).toBe(false);
@@ -54,7 +76,7 @@ describe("MFA step-up signal (GET /v1/me) with REQUIRE_STAFF_MFA=true", () => {
     it(`${email}: aal1 withholds every staff permission and asks for MFA; aal2 restores them`, async () => {
       const weak = (await t.call("GET", "/v1/me", { as: email })).json;
       expect(weak.mfaRequired).toBe(true);
-      expect(weak.permissions).toEqual(["application.read_own", "notification.read_own", "registration.submit"]);
+      expect(weak.permissions).toEqual(["application.read_own", "application.withdraw_own", "notification.read_own", "registration.submit"]);
       const strong = (await t.call("GET", "/v1/me", { as: email, aal: "aal2" })).json;
       expect(strong.mfaRequired).toBe(false);
       expect(strong.permissions.length).toBeGreaterThan(3);
