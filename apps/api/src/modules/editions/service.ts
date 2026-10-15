@@ -1,4 +1,4 @@
-import type { PublicEdition } from "@sj/contracts";
+import { ApplicationForm, type PublicEdition } from "@sj/contracts";
 import type { Db } from "../../db/client.js";
 import { AppError } from "../../platform/errors.js";
 
@@ -12,10 +12,11 @@ export type EditionRow = {
   registrationClosesAt: Date | null;
   closesAtConfirmed: boolean;
   selectionLimit: number | null;
+  applicationForm: ApplicationForm;
 };
 
 export async function listEditions(db: Db): Promise<EditionRow[]> {
-  return db<EditionRow[]>`
+  const rows = await db<(Omit<EditionRow, "applicationForm"> & { applicationForm: unknown })[]>`
     select id, name,
            to_char(pre_event_on, 'YYYY-MM-DD') as "preEventOn",
            to_char(event_starts_on, 'YYYY-MM-DD') as "eventStartsOn",
@@ -23,8 +24,16 @@ export async function listEditions(db: Db): Promise<EditionRow[]> {
            registration_opens_at as "registrationOpensAt",
            registration_closes_at as "registrationClosesAt",
            closes_at_confirmed as "closesAtConfirmed",
-           selection_limit as "selectionLimit"
+           selection_limit as "selectionLimit",
+           application_form as "applicationForm"
     from event_editions order by id`;
+  // A malformed form configuration fails closed: nothing is served or accepted until it is fixed (TBD-39).
+  return rows.map((r) => {
+    const form = ApplicationForm.safeParse(r.applicationForm);
+    // Configuration error, not user input: a plain Error becomes a 500 and the details stay in the server log.
+    if (!form.success) throw new Error(`event_editions.application_form of edition ${r.id} is invalid: ${form.error.message}`);
+    return { ...r, applicationForm: form.data };
+  });
 }
 
 export async function getEdition(db: Db, year: number): Promise<EditionRow> {
@@ -52,5 +61,6 @@ export function toPublic(e: EditionRow, now: Date): PublicEdition {
       closesAt: e.registrationClosesAt?.toISOString() ?? null,
       closesAtConfirmed: e.closesAtConfirmed,
     },
+    applicationForm: e.applicationForm,
   };
 }

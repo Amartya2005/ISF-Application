@@ -137,14 +137,46 @@ describe("AT-14 release, AT-10 independent editions, AT-09 access", () => {
   });
 });
 
-describe("AT-15 configurable selection limit (warn only, TBD-19)", () => {
-  it("is set without code changes and warns when exceeded", async () => {
+describe("AT-15 configurable selection limit: releasing above it needs explicit confirmation (TBD-19)", () => {
+  it("is set without code changes; a release above the limit is refused unless confirmed, and nothing is released", async () => {
     const s = await t.call("PUT", "/v1/manage/editions/2026/selection-limit", { as: MANAGER, body: { limit: 1 } });
     expect(s.json).toEqual({ edition: 2026, selectionLimit: 1 });
     await t.call("PUT", `/v1/manage/applications/${extraApp26}/decision`, { as: MANAGER, body: { outcome: "selected" } });
-    const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: { applicationIds: [extraApp26] } });
+    const [before] = await t.sql<{ n: number }[]>`select count(*)::int as n from notifications`;
+
+    const refused = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: { applicationIds: [extraApp26] } });
+    expect(refused.status).toBe(409);
+    expect(refused.json).toMatchObject({ code: "selection_limit_exceeded", limit: 1, selectedAfterRelease: 2 });
+    const [app] = await t.sql<{ status: string }[]>`select status from applications where id = ${extraApp26}`;
+    expect(app!.status).toBe("decision_drafted");
+    const [after] = await t.sql<{ n: number }[]>`select count(*)::int as n from notifications`;
+    expect(after!.n).toBe(before!.n);
+  });
+
+  it("a confirmed release goes ahead, warns, and is audited separately", async () => {
+    const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", {
+      as: MANAGER, body: { applicationIds: [extraApp26], confirmOverLimit: true },
+    });
+    expect(r.status).toBe(200);
     expect(r.json.released).toBe(1);
     expect(r.json.warnings[0]).toContain("above the configured limit of 1");
+    const [ev] = await t.sql<{ data: { limit: number; selectedAfterRelease: number } }[]>`
+      select data from audit_events where action = 'selection.limit_exceeded_confirmed'`;
+    expect(ev!.data).toMatchObject({ limit: 1, selectedAfterRelease: 2 });
+  });
+
+  it("releasing only 'not selected' decisions never needs confirmation, even when already above the limit", async () => {
+    const late = (await t.call("POST", "/v1/me/registrations", { as: "late-limit@example.com", body: registration({ name: "Late Limit Co" }) })).json.applications[0].id;
+    await t.call("PUT", `/v1/manage/applications/${late}/decision`, { as: MANAGER, body: { outcome: "not_selected" } });
+    const r = await t.call("POST", "/v1/manage/editions/2026/decisions/release", { as: MANAGER, body: { applicationIds: [late] } });
+    expect(r.status).toBe(200);
+    expect(r.json).toMatchObject({ released: 1, selected: 0, notSelected: 1 });
+  });
+
+  it("the console's list reports drafted plus released selections against the limit", async () => {
+    const r = await t.call("GET", LIST, { as: MANAGER });
+    expect(r.json.selectionLimit).toBe(1);
+    expect(r.json.selectedTotal).toBe(2);
   });
 });
 
@@ -153,7 +185,7 @@ describe("AT-34 audit trail (slice scope)", () => {
     const rows = await t.sql<{ action: string }[]>`select distinct action from audit_events order by action`;
     expect(rows.map((r) => r.action)).toEqual(expect.arrayContaining([
       "account.created", "registration.submitted", "decision.drafted", "decision.draft_withdrawn",
-      "decision.released", "edition.selection_limit_set",
+      "decision.released", "edition.selection_limit_set", "selection.limit_exceeded_confirmed",
     ]));
   });
 });

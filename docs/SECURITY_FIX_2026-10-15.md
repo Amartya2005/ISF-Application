@@ -72,7 +72,7 @@ This matches PRD FR-SEL-04 as written ("warn"). It is not a security or integrit
 - every release is audited;
 - the count is computed in the same transaction.
 
-The behaviour is therefore kept. **TBD-19 (open):** should exceeding the limit warn only, require explicit confirmation, or block? Not decided; nothing was invented.
+The behaviour was kept at the time. **TBD-19 was resolved later on 15 Oct 2026** ([DECISIONS.md](/docs/DECISIONS.md)): a release above the limit now needs explicit, audited confirmation (`confirmOverLimit`), pending Management approval of the policy.
 
 ## 4. Tests added
 
@@ -167,7 +167,7 @@ This section brings the report up to date with work done after the fix. Sections
 3. **Service-role key handling**: still open, operational; checklist §A.
 4. **Activation flow not built**: ✅ **resolved** (Phase 3).
 5. **Email change after linking not re-synced**: still open, accepted for now.
-6. **Selection-limit policy TBD-19**: still open (warn-only behaviour unchanged).
+6. **Selection-limit policy TBD-19**: ✅ **decided** (DECISIONS.md): confirmation required above the limit, audited; built and tested (AT-15). The policy awaits Management approval.
 7. **Pending accounts' pre-assigned grants**: still inert; the API never loads roles for non-active accounts (tested for all 8 roles).
 
 ### Hardening added since the fix

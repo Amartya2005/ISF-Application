@@ -75,7 +75,7 @@ export default function Imports() {
           </span>
         </label>
         <p className="notice notice-warn small" style={{ margin: 0 }}>
-          This column layout is provisional until the organising team’s data format is agreed (TBD-41).
+          Column set v1 (TBD-41). It is the recommended format and awaits the organising team’s sign-off on a real sample file.
         </p>
         <div><button className="btn btn-primary" disabled={!file || busy}>{busy ? "Checking…" : "Check file"}</button></div>
         {authMode === "dev" && <p className="muted small" style={{ margin: 0 }}>Development sign-in is active. Use test data only.</p>}

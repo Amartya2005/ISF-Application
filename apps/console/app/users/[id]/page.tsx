@@ -108,7 +108,7 @@ export default function UserPage({ params }: { params: Promise<{ id: string }> }
                   <div className="notice notice-ok" style={{ marginTop: 12 }}>
                     <p><strong>Activation code (shown once):</strong></p>
                     <p><code style={{ wordBreak: "break-all" }}>{issued.token}</code></p>
-                    <p className="small">Valid until {formatIst(issued.expiresAt)}. Give it to {u.fullName} privately. The delivery channel (email or SMS) is still to be decided (TBD-13), so for now it is delivered manually. Never put it in a spreadsheet.</p>
+                    <p className="small">Valid until {formatIst(issued.expiresAt)}. Give it to {u.fullName} privately. Automatic delivery to the participant’s own email or mobile comes once the email and SMS providers are in place (TBD-13); until then, hand it over yourself. Never put it in a spreadsheet.</p>
                   </div>
                 )}
               </>

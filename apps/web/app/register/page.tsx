@@ -2,15 +2,15 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ApiError } from "@sj/client";
-import type { PublicEdition, RegistrationResponse, YearOption } from "@sj/contracts";
+import { checkFormAnswers, mergeQuestions, yearsFor, type PublicEdition, type RegistrationResponse, type YearOption } from "@sj/contracts";
 import { api, useSessionIdentity } from "@/lib/session";
 
 type Form = {
   yearOption: YearOption | "";
   name: string; description: string; website: string; city: string; state: string;
-  fullName: string; mobile: string; privacy: boolean;
+  fullName: string; mobile: string; privacy: boolean; adult: boolean;
 };
-const EMPTY: Form = { yearOption: "", name: "", description: "", website: "", city: "", state: "", fullName: "", mobile: "", privacy: false };
+const EMPTY: Form = { yearOption: "", name: "", description: "", website: "", city: "", state: "", fullName: "", mobile: "", privacy: false, adult: false };
 
 const OPTIONS: { value: YearOption; label: string; years: number[] }[] = [
   { value: "2026", label: "2026 only", years: [2026] },
@@ -22,6 +22,7 @@ export default function RegisterPage() {
   const email = useSessionIdentity();
   const [editions, setEditions] = useState<PublicEdition[] | null>(null);
   const [f, setF] = useState<Form>(EMPTY);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<RegistrationResponse | null>(null);
@@ -29,9 +30,17 @@ export default function RegisterPage() {
 
   useEffect(() => { api.editions().then(setEditions).catch(() => setEditions([])); }, []);
   const open = (year: number) => editions?.find((e) => e.year === year)?.registration.open ?? false;
+  // The questions come from the chosen editions' form configuration (TBD-39); before a choice, the open editions'.
+  const chosen = f.yearOption ? yearsFor(f.yearOption) : (editions ?? []).filter((e) => e.registration.open).map((e) => e.year);
+  const questions = mergeQuestions((editions ?? []).filter((e) => chosen.includes(e.year as 2026 | 2027)).map((e) => e.applicationForm));
   const PATH: Record<keyof Form, string> = {
     yearOption: "yearOption", name: "startup.name", description: "startup.description", website: "startup.website",
     city: "startup.city", state: "startup.state", fullName: "leader.fullName", mobile: "leader.mobile", privacy: "privacyNoticeAccepted",
+    adult: "adultDeclaration",
+  };
+  const answer = (k: string, v: string) => {
+    setAnswers((p) => ({ ...p, [k]: v }));
+    setErrors(({ [`formAnswers.${k}`]: _cleared, ...rest }) => rest);
   };
   const set = <K extends keyof Form>(k: K, v: Form[K]) => {
     setF((p) => ({ ...p, [k]: v }));
@@ -43,13 +52,22 @@ export default function RegisterPage() {
     setErrors({});
     setProblem(null);
     if (!f.yearOption) { setErrors({ yearOption: "Choose which year(s) to apply for" }); return; }
+    const own = Object.fromEntries(questions.map((q) => [q.key, answers[q.key] ?? ""]));
+    const issues = checkFormAnswers(questions, own);
+    if (issues.length) {
+      setErrors(Object.fromEntries(issues.map((i) => [i.path, i.message])));
+      setProblem("Please answer every question.");
+      return;
+    }
     setBusy(true);
     try {
       const r = await api.register({
         yearOption: f.yearOption,
         startup: { name: f.name, description: f.description, website: f.website || undefined, city: f.city || undefined, state: f.state || undefined },
         leader: { fullName: f.fullName, mobile: f.mobile },
+        formAnswers: own,
         privacyNoticeAccepted: f.privacy as true,
+        adultDeclaration: f.adult as true,
       });
       setDone(r);
     } catch (err) {
@@ -123,6 +141,19 @@ export default function RegisterPage() {
         </div>
       </fieldset>
 
+      {questions.length > 0 && (
+        <fieldset>
+          <legend>About your startup</legend>
+          {questions.map((q) => (
+            <label key={q.key}>{q.label} *
+              <span className="hint">{q.help ? `${q.help} ` : ""}{q.minLength}–{q.maxLength.toLocaleString("en-IN")} characters.</span>
+              <textarea value={answers[q.key] ?? ""} maxLength={q.maxLength} onChange={(e) => answer(q.key, e.target.value)} />
+              {err(`formAnswers.${q.key}`)}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
       <fieldset>
         <legend>Team leader</legend>
         <label>Full name *<input type="text" autoComplete="name" value={f.fullName} onChange={(e) => set("fullName", e.target.value)} />{err("leader.fullName")}</label>
@@ -135,6 +166,11 @@ export default function RegisterPage() {
         <span>I have read the <Link href="/privacy" target="_blank">privacy notice</Link> *</span>
       </label>
       {err("privacyNoticeAccepted")}
+      <label className="choice">
+        <input type="checkbox" checked={f.adult} onChange={(e) => set("adult", e.target.checked)} />
+        <span>I confirm that I am 18 years of age or older *</span>
+      </label>
+      {err("adultDeclaration")}
 
       <div><button className="btn btn-primary" disabled={busy}>{busy ? "Submitting…" : "Submit application"}</button></div>
     </form>

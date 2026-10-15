@@ -1,6 +1,6 @@
 // Browser sign-in shared by the website and the console.
 // AUTH_MODE=dev: API-issued development tokens (local only; the API refuses this mode in production).
-// AUTH_MODE=supabase: Supabase Auth one-time codes by email or SMS (which channels is TBD-12, so it is configurable),
+// AUTH_MODE=supabase: Supabase Auth one-time codes by email or SMS (channels per environment, decision TBD-12),
 // plus TOTP multi-factor authentication for staff roles (FR-IAM-11).
 import { useSyncExternalStore } from "react";
 import { createApi } from "@sj/client";

@@ -39,6 +39,48 @@ export function normaliseMobile(input: string): string | null {
   return null;
 }
 
+// ---------------------------------------------------------------- application form (edition configuration, TBD-39)
+/** One question on the application form. Stored per edition in the database (migration 0007), never in client code. */
+export const FormQuestion = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+  label: z.string().min(1).max(300),
+  help: z.string().max(300).optional(),
+  minLength: z.number().int().min(0).max(5000),
+  maxLength: z.number().int().min(1).max(5000),
+});
+export type FormQuestion = z.infer<typeof FormQuestion>;
+
+export const ApplicationForm = z.object({ version: z.string().min(1).max(40), questions: z.array(FormQuestion).max(30) });
+export type ApplicationForm = z.infer<typeof ApplicationForm>;
+
+/**
+ * The questions an applicant must answer for the chosen editions: the union by key. A key asked by several editions is
+ * answered once and must satisfy every edition's limits.
+ */
+export function mergeQuestions(forms: ApplicationForm[]): FormQuestion[] {
+  const byKey = new Map<string, FormQuestion>();
+  for (const q of forms.flatMap((f) => f.questions)) {
+    const prev = byKey.get(q.key);
+    byKey.set(q.key, prev
+      ? { ...prev, minLength: Math.max(prev.minLength, q.minLength), maxLength: Math.min(prev.maxLength, q.maxLength) }
+      : q);
+  }
+  return [...byKey.values()];
+}
+
+/** Field errors (paths `formAnswers.<key>`) for answers checked against the questions; unknown keys are rejected. */
+export function checkFormAnswers(questions: FormQuestion[], answers: Record<string, string>): { path: string; message: string }[] {
+  const issues: { path: string; message: string }[] = [];
+  const known = new Set(questions.map((q) => q.key));
+  for (const k of Object.keys(answers)) if (!known.has(k)) issues.push({ path: `formAnswers.${k}`, message: "This question is not on the form" });
+  for (const q of questions) {
+    const v = (answers[q.key] ?? "").trim();
+    if (v.length < Math.max(q.minLength, 1)) issues.push({ path: `formAnswers.${q.key}`, message: `Answer this question (at least ${Math.max(q.minLength, 1)} characters)` });
+    else if (v.length > q.maxLength) issues.push({ path: `formAnswers.${q.key}`, message: `Use at most ${q.maxLength} characters` });
+  }
+  return issues;
+}
+
 // ---------------------------------------------------------------- public editions
 export const PublicEdition = z.object({
   year: z.number().int(),
@@ -49,9 +91,10 @@ export const PublicEdition = z.object({
   registration: z.object({
     open: z.boolean(),
     closesAt: z.string().nullable(),
-    /** false while the exact cut-off time is still provisional (PRD TBD-11 / TBD-05). */
+    /** false until the organisers confirm the cut-off in writing (TBD-11: 23:59:59 IST recommended, docs/DECISIONS.md). */
     closesAtConfirmed: z.boolean(),
   }),
+  applicationForm: ApplicationForm,
 });
 export type PublicEdition = z.infer<typeof PublicEdition>;
 
@@ -63,14 +106,15 @@ export function yearsFor(option: YearOption): EditionYear[] {
   return option === "both" ? [2026, 2027] : [Number(option) as EditionYear];
 }
 
-/** The privacy notice version shown at registration. Text is pending legal review (PRD TBD-32). */
+/** The privacy notice version shown at registration. Draft text (docs/PRIVACY_NOTICE_DRAFT.md) awaits legal approval (TBD-32). */
 export const PRIVACY_NOTICE_VERSION = "draft-2026-10-15";
 
 const trimmed = (min: number, max: number) => z.string().trim().min(min).max(max);
 
 /**
- * Minimal registration form. The final field list depends on the evaluation criteria (PRD TBD-39);
- * additional fields travel in `formAnswers` so they can be added without a schema migration.
+ * Registration form (TBD-39, docs/DECISIONS.md): fixed core fields plus `formAnswers`, the text answers to the edition's
+ * configured questions (`PublicEdition.applicationForm`). The API checks answers against that configuration and rejects
+ * unknown keys. No uploads and no links beyond the optional website.
  */
 export const RegistrationRequest = z.object({
   yearOption: YearOption,
@@ -95,8 +139,10 @@ export const RegistrationRequest = z.object({
         return n;
       }),
   }),
-  formAnswers: z.record(z.string().max(64), z.union([z.string().max(5000), z.number(), z.boolean()])).optional(),
+  formAnswers: z.record(z.string().max(64), z.string().max(5000)).optional(),
   privacyNoticeAccepted: z.literal(true, { message: "You must accept the privacy notice" }),
+  /** TBD-45: the platform is for adults; the registering leader confirms they are 18 or older. No date of birth is collected. */
+  adultDeclaration: z.literal(true, { message: "You must confirm that you are 18 or older" }),
 });
 export type RegistrationRequest = z.input<typeof RegistrationRequest>;
 
@@ -146,6 +192,11 @@ export type DecisionRequest = z.infer<typeof DecisionRequest>;
 
 export const ReleaseRequest = z.object({
   applicationIds: z.array(z.string().uuid()).min(1).max(500).optional(),
+  /**
+   * TBD-19: a release that would take the edition above its selection limit is refused (409 selection_limit_exceeded)
+   * unless the manager explicitly confirms it with this flag. The confirmation is audited.
+   */
+  confirmOverLimit: z.boolean().optional(),
 });
 export type ReleaseRequest = z.infer<typeof ReleaseRequest>;
 
@@ -177,6 +228,8 @@ export const ManageApplication = z.object({
     })
     .nullable(),
   formAnswers: z.record(z.string(), z.unknown()),
+  /** Version of the edition's application form this application answered (null for applications made before 0007). */
+  formVersion: z.string().nullable(),
 });
 export type ManageApplication = z.infer<typeof ManageApplication>;
 
@@ -184,7 +237,7 @@ export const ManageApplicationList = z.object({
   edition: z.number().int(),
   counts: z.record(z.string(), z.number()),
   selectionLimit: z.number().int().nullable(),
-  /** Selected (released) plus drafted-as-selected; compared with the limit for a warning only (TBD-19). */
+  /** Selected (released) plus drafted-as-selected. Releasing above the limit needs explicit confirmation (TBD-19). */
   selectedTotal: z.number().int(),
   items: z.array(ManageApplication),
 });
@@ -234,8 +287,8 @@ export const IMPORT_CATEGORIES = ["startups", "jury", "volunteers", "delegates"]
 export type ImportCategory = (typeof IMPORT_CATEGORIES)[number];
 
 /**
- * PROVISIONAL CSV columns until the organising team's data format is agreed (TBD-41).
- * Every row: full_name, plus email and/or mobile (sign-in identifier is TBD-12). Startups add startup_name and
+ * CSV column set v1 (TBD-41, docs/DECISIONS.md): recommended format, awaiting the organisers' sign-off on a real sample.
+ * Every row: full_name, plus email and/or mobile (both recommended; TBD-12). Startups add startup_name and
  * position (leader | member), plus optional startup details. No password column is ever accepted (FR-IMP-07).
  */
 export const IMPORT_COLUMNS: Record<ImportCategory, { required: string[]; optional: string[] }> = {
@@ -318,19 +371,20 @@ export const ActivationIssued = z.object({
   /** Shown once. Only its hash is stored. */
   token: z.string(),
   expiresAt: z.string(),
-  /** Delivery channel is TBD-13: until then the Admin hands this to the participant. */
+  /** TBD-13: automated delivery to the participant's own email or mobile follows once providers are contracted; until then the Admin hands it over. */
   delivery: z.literal("manual"),
 });
 export type ActivationIssued = z.infer<typeof ActivationIssued>;
 
-// ---------------------------------------------------------------- sign-in identifier (TBD-12: email, mobile or both)
+// ---------------------------------------------------------------- sign-in identifier (TBD-12: both; SMS once DLT is approved)
 export const SIGN_IN_METHODS = ["email", "phone"] as const;
 export type SignInMethod = (typeof SIGN_IN_METHODS)[number];
 export type SignInIdentifier = { email: string } | { phone: string };
 
 /**
  * Which one-time-code channels an environment offers, from a comma list such as "email,phone".
- * The organisers have not yet chosen (TBD-12), so both are allowed unless an environment narrows it.
+ * TBD-12 (docs/DECISIONS.md): email and mobile. Deployed environments set the list explicitly: `email` until the
+ * DLT-registered SMS sender is live, then `email,phone`. Unset (local development) allows both.
  * Unknown values are ignored; an empty or invalid list falls back to email only.
  */
 export function parseSignInMethods(value: string | undefined | null): SignInMethod[] {

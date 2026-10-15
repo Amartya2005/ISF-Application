@@ -174,7 +174,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post("/v1/manage/editions/:year/decisions/release", { preHandler: [auth, requirePermission("decision.release")] }, async (req) => {
     const { year } = parse(Year, req.params);
     const body = parse(ReleaseRequest, req.body ?? {});
-    return releaseDecisions(sql, principalOf(req), year, body.applicationIds);
+    return releaseDecisions(sql, principalOf(req), year, body.applicationIds, { confirmOverLimit: body.confirmOverLimit });
   });
 
   app.put("/v1/manage/editions/:year/selection-limit", { preHandler: [auth, requirePermission("selection_limit.configure")] }, async (req) => {

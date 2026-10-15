@@ -42,10 +42,14 @@ The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (AD
   - Admins can grant and revoke roles, deactivate and reactivate accounts; nobody can change their own roles or status;
   - `GET /v1/me`, and a website activation page.
 - **Phase 4, mobile:** an Expo (SDK 57) app for Android and iOS on the same API, with sign-in, activation, a role-aware home screen, startup registration, per-year application status and messages.
-- **Sign-in by email or mobile number** (one-time code by email or SMS) on the website and the app. Which channels are offered is configurable while the decision is open (TBD-12).
+- **Sign-in by email or mobile number** (one-time code by email or SMS) on the website and the app. Decision TBD-12 ([`docs/DECISIONS.md`](docs/DECISIONS.md)): both channels; deployed environments offer email only until the DLT-registered SMS sender is live.
 - **Mobile session in the device keychain/keystore**, never in plain storage.
 - **Staff MFA policy:** mandatory in production. Admin, Management and Support complete an authenticator-app step before any privileged action.
 - **Import hardening:** malformed rows (shifted columns, control characters, unreadable text, oversized cells, spreadsheet-formula prefixes) are rejected row by row.
+- **Decisions on every open TBD** (15 Oct 2026, [`docs/DECISIONS.md`](docs/DECISIONS.md)), most awaiting organiser, Management, legal or budget approval. Built from them:
+  - the application form's six questions are edition configuration (migration 0007), served to the website and app and frozen once applications exist (TBD-39);
+  - applicants confirm they are 18 or older (TBD-45);
+  - releasing decisions above the selection limit needs explicit, audited confirmation (TBD-19).
 
 The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
 
@@ -55,13 +59,13 @@ The latest verification recorded the following, and GitHub Actions runs the auto
 
 ### Planned / not yet complete
 
-- Production identity configuration (Supabase staging/production) and an automated delivery channel for activation codes (TBD-13; codes are handed over manually for now).
-- Final import column layout (TBD-41). The current CSV template is provisional.
+- Production identity configuration (Supabase production) and automated delivery of activation codes to the participant's own email or mobile (TBD-13; codes are handed over manually until the email and SMS providers are contracted).
+- Organisers' sign-off of import column set v1 on a real sample file (TBD-41).
 - AI-assisted startup ranking and criteria management.
 - Jury scoring UI and workflow.
 - Random volunteer assignment and reassignment UI.
 - Event content, notices and push notifications.
-- Event features in the mobile app (schedule, venues, notices, push notifications, Help Desk), and app-store builds (needs Apple/Google accounts, TBD-36).
+- Event features in the mobile app (schedule, venues, notices, push notifications, Help Desk), and app-store builds (needs organisation-owned Apple/Google accounts, TBD-36).
 - AI Help Desk, WhatsApp integration, customer-support workflows and emergency escalation.
 - Production deployment, load/security testing and disaster-recovery validation.
 
@@ -76,7 +80,7 @@ See the [Technical Execution Plan](docs/EXECUTION_PLAN.md) for dependencies, acc
 - AI ranking (planned) is advisory. **Management makes every final startup selection/rejection decision.**
 - Each volunteer will eventually be assigned to exactly one target: **one startup OR one jury member**, never both. Volunteer assignment is not yet implemented as a complete user workflow.
 
-The 2026 registration deadline is **5 November 2026**. The exact cutoff time and timezone remain a stakeholder decision; the current `23:59:59 IST` value is provisional and must not be treated as approved policy.
+The 2026 registration deadline is **5 November 2026**. The recommended cut-off is `23:59:59 IST` on that day (TBD-11, [`docs/DECISIONS.md`](docs/DECISIONS.md)); it awaits the organisers' written confirmation, and the website shows "time to be confirmed" until `closes_at_confirmed` is set.
 
 ## Architecture
 
@@ -107,7 +111,8 @@ packages/
 db/migrations/           Forward-only SQL migrations
 docs/ARCHITECTURE.md     ADR-001: the locked architecture
 docs/PHASES.md           The 10 delivery phases and their status
-docs/EXECUTION_PLAN.md   Stack, API boundaries, schema, backlog, risks and TBDs
+docs/EXECUTION_PLAN.md   Stack, API boundaries, schema, backlog and risks
+docs/DECISIONS.md        Decision register: every TBD resolved, with the approvals still needed
 scripts/                 Local database and browser-test helpers
 .github/workflows/       Continuous integration workflow
 ```
@@ -255,10 +260,10 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `DEV_AUTH_SECRET` | Local-only development signing secret; use a unique secret locally |
 | `SUPABASE_URL` | Supabase project URL for provider/JWKS verification |
 | `SUPABASE_SERVICE_ROLE_KEY` | **API only, server-side secret.** Reads the authoritative user record to confirm email/phone verification. Never a `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value |
-| `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72; provisional, not specified in the requirements) |
+| `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72, as recommended in TBD-13; awaiting organiser approval) |
 | `REQUIRE_STAFF_MFA` | Require MFA (aal2) for Admin, Management and Support. On by default in production and cannot be turned off there. Off locally unless set to `true` |
 | `LAUNCH_APPROVED` | Production start gate. Set to `true` only after `docs/LAUNCH_CHECKLIST.md` is signed off |
-| `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone` (default both; TBD-12) |
+| `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone`. Unset allows both (development). Deployed environments set `email` until the DLT-registered SMS sender is live, then `email,phone` (TBD-12) |
 | `CORS_ORIGINS` | Explicit allowlist of trusted web origins |
 | `NEXT_PUBLIC_API_URL` | API URL used by website and console |
 | `NEXT_PUBLIC_AUTH_MODE` | Client auth mode matching the target environment |
@@ -296,7 +301,9 @@ The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`]
 
 - [Architecture (ADR-001)](docs/ARCHITECTURE.md) — the locked architecture.
 - [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
-- [Technical Execution Plan](docs/EXECUTION_PLAN.md) — decisions, data model, APIs, security practices, milestones, backlog and open items.
+- [Technical Execution Plan](docs/EXECUTION_PLAN.md) — stack, data model, APIs, security practices, milestones and backlog.
+- [Decision register](docs/DECISIONS.md) — the recommended decision for every TBD, its rationale and who must approve it.
+- [Privacy notice draft](docs/PRIVACY_NOTICE_DRAFT.md) — for legal review (TBD-32); not approved.
 - [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement, reconciled to the current state (§8).
 - [Device test protocol](docs/DEVICE_TEST_PROTOCOL.md) — real-phone checks for sessions, refresh, sign-out and MFA (with `pnpm --filter @sj/api staging:verify` for the live Supabase server side).
 - [Launch checklist](docs/LAUNCH_CHECKLIST.md) — what must be signed off before production; the API refuses to start in production until then.

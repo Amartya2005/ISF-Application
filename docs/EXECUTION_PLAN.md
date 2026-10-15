@@ -1,7 +1,7 @@
 # Startup Jathara Platform — Technical Execution Plan
 
-Zeny2Labs · v0.1 · 15 October 2026 · Source of truth: **Startup_Jathara_PRD_v1.0**. IDs (FR-, AT-, TBD-, DC-) refer to the PRD.
-Labels: **Decided** = engineering decision (change via ADR); **TBD** = needs stakeholder input; **Blocker** = stops a milestone.
+Zeny2Labs · v0.2 · 15 October 2026 · Source of truth: **Startup_Jathara_PRD_v1.1**. IDs (FR-, AT-, TBD-, DC-) refer to the PRD. Every TBD now has a recorded decision in [DECISIONS.md](DECISIONS.md); most await approval.
+Labels: **Decided** = engineering decision (change via ADR); **Awaiting approval** = recommended decision in DECISIONS.md that a stakeholder must approve; **Blocker** = stops a milestone.
 
 **Situation.** 21 days to the 2026 registration deadline (5 Nov 2026); 63 days to the pre-event day (17 Dec 2026). No code existed before this repo, no GitHub account is linked to this workspace, and no project-owned cloud accounts exist yet. Team capacity is unconfirmed; the schedule below assumes **at least three full-time engineers**. With fewer, M6–M8 are at risk (see §8).
 
@@ -15,14 +15,15 @@ Labels: **Decided** = engineering decision (change via ADR); **TBD** = needs sta
 | Repo | pnpm workspaces monorepo | Atomic changes across API, web and contracts; one CI. |
 | API | **Fastify 5 modular monolith**, Zod at every boundary, `postgres` SQL client, SQL-first migrations | Small and fast. Explicit SQL keeps the PRD's integrity rules visible in the schema (DC-01…13) rather than hidden in an ORM. The PRD's modular-monolith default is kept. |
 | Database | **PostgreSQL 16+**: Supabase managed Postgres, Mumbai (ap-south-1), separate staging and production projects | Relational constraints for unique applications and one-to-one volunteers; partial unique indexes; India region. |
-| Identity | **Supabase Auth** as identity provider (email OTP and phone OTP; TOTP MFA). The API verifies JWTs via JWKS and owns all authorisation in its own tables | No passwords in our code (FR-IAM-08). Supports email, phone or both while TBD-12/13 are open. Staff MFA (FR-IAM-11). |
+| Identity | **Supabase Auth** as identity provider (email OTP and phone OTP; TOTP MFA). The API verifies JWTs via JWKS and owns all authorisation in its own tables | No passwords in our code (FR-IAM-08). Email and phone (TBD-12): email from launch, SMS once the DLT sender is live. Staff MFA (FR-IAM-11). |
 | Web | **Next.js 16 / React 19**: `apps/web` (public site + applicant pages) and `apps/console` (Admin, Management, Support areas, each role-gated, deployable on its own subdomain) | Server rendering for public pages. One console codebase replaces the PRD's "three separately deployed dashboards" (Proposed default). Separation is enforced by API authorisation and per-area gates. |
 | Mobile | **Expo (React Native)**, one codebase; EAS Build/Submit; `expo-notifications` (FCM/APNs) | One app for Android and iOS (RQ §1). Shares TypeScript contracts. Content stays server-driven (FR-EVT-02). |
 | Background jobs | **pg-boss** (Postgres-backed queue) | Notifications, imports, ranking runs and retries without adding Redis. |
 | Files | Supabase Storage, private buckets, short-lived signed URLs | SEC-08. |
-| AI | Provider adapter with **separate keys, config and service identity** for Ranking and Help Desk. Vendor **TBD-35** | FR-RNK-12 and FR-HD-20 independence; replaceable vendor. |
-| WhatsApp | WhatsApp Business Platform (Cloud API) behind an adapter; provider **TBD-35** | FR-HD-01, FR-HD-03. |
-| Hosting | API + workers: containers on **Google Cloud Run asia-south1**. Web/console: **Vercel (bom1)**. DB/Auth/Storage: **Supabase ap-south-1** | Managed, scale-to-zero, India regions, minimal ops for a small team. **Recommended — blocked on TBD-46 (budget) and TBD-36 (account ownership).** |
+| AI | Provider adapter with **separate keys, config and service identity** for Ranking and Help Desk. Vendor: **Google Vertex AI** in the hosting project (TBD-35, awaiting contract approval) | FR-RNK-12 and FR-HD-20 independence; replaceable vendor. |
+| WhatsApp | WhatsApp Business Platform, **Meta Cloud API directly** (no BSP), behind an adapter (TBD-35) | FR-HD-01, FR-HD-03. |
+| Email, SMS | **Amazon SES (ap-south-1)** as SMTP for Supabase Auth and API mail; SMS through a **DLT-compliant Indian aggregator** (default MSG91) via Supabase's Send SMS hook (TBD-35) | Supabase's built-in email is not for production; Indian SMS needs DLT registration. |
+| Hosting | API + workers: containers on **Google Cloud Run asia-south1**. Web/console: **Vercel (bom1)**. DB/Auth/Storage: **Supabase ap-south-1** | Managed, scale-to-zero, India regions, minimal ops for a small team. **Recommended (TBD-46); awaiting budget approval and organisation-owned accounts (TBD-36).** Vercel Pro, because Hobby is non-commercial only. |
 | Observability | pino JSON logs → Cloud Logging; Sentry (web, API, mobile); uptime checks | NFR-14. |
 
 ## 2. Environments and deployment
@@ -124,10 +125,11 @@ erDiagram
 | DC-08 Four ticket statuses | `CHECK status IN (…)` |
 | DC-09 No passwords | No password column anywhere; identity provider holds credentials |
 | DC-13 Audit append-only | Trigger rejects `UPDATE`/`DELETE` on `audit_events` |
-| Released decision immutable (TBD-37) | Trigger blocks outcome change after `released_at` |
+| Released decision immutable (TBD-37) | Trigger blocks outcome change after `released_at`. The two-person correction process (decision TBD-37) is added in Phase 5 |
+| Application form frozen once an edition has applications (TBD-39) | Trigger `event_editions_form_frozen` (migration 0007) |
 | One leader per startup | Partial unique index on `startup_memberships` |
 
-2027 event dates and deadline stay `NULL` until TBD-05 is decided. The 2026 cut-off is seeded as `2026-11-05 23:59:59 IST` and flagged `closes_at_confirmed=false` (**TBD-11, Blocker for launch**).
+2027 event dates and deadline stay `NULL` until Management sets them (TBD-05). The 2026 cut-off is seeded as `2026-11-05 23:59:59 IST`, the recommended value (TBD-11), and stays flagged `closes_at_confirmed=false` until the organisers confirm it in writing (**Blocker for launch**).
 
 ## 6. Authentication, roles, permissions and edition isolation
 
@@ -215,22 +217,26 @@ The registration website is never descoped.
 | B-25 | Support console, tickets, escalation, ack timers | TBD-27/28 | AT-30, AT-32 | M7 |
 | B-26 | Load test, pen test, restore drill, runbook | All | AT-35, AT-36 | M8 |
 
-## 9. P0 decisions requiring stakeholder input
+## 9. Decisions and approvals
 
-| TBD | Decision | Needed by | Blocks |
+On 15 Oct 2026 every TBD received a recommended decision, with rationale, trade-offs and approver, in [DECISIONS.md](DECISIONS.md). The approvals are tracked in [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) §C. The P0 items and their target approval dates:
+
+| TBD | Recommended decision | Approve by | Blocks |
 |---|---|---|---|
-| TBD-11 | Exact cut-off time and time zone for 5 Nov (seeded provisionally as 23:59:59 IST) | 20 Oct | M1 launch |
-| TBD-12 / 13 | Sign-in identifier (email, mobile or both) and activation channel | 20 Oct | B-06, imports |
-| TBD-39 | Final application form fields and any uploads | 20 Oct | B-07 (slice ships a minimal field set + `formAnswers` extension) |
-| TBD-32 | Privacy notice, retention, DPDP review | 22 Oct | Launch |
-| TBD-36 / 46 | Who owns the cloud, store, WhatsApp and domain accounts; budget; hosting region | 18 Oct | B-02 — **everything deployable** |
-| TBD-38 | Must app registration exist before 5 Nov? (Recommendation: no — website only) | 18 Oct | M1 scope |
-| TBD-08 | Do Junicorn eligibility and stages apply? | 20 Oct | Form fields |
-| TBD-15 | Rule for "the same startup" across accounts (interim: one startup per leader account; same-name startups are flagged for Management, not blocked) | 25 Oct | Duplicate policy |
-| TBD-14 | Result notification channels; approval of notification wording (drafts in code) | before first release | B-05 in production |
-| TBD-01 | AI evaluation criteria and weights | 6 Nov | M3 |
-| TBD-35 | AI, WhatsApp, email and SMS vendors (incl. DLT registration for SMS) | 25 Oct | M3, M7 |
-| TBD-07 / 27 / 28 | Emergency contacts, escalation targets, support staffing | 20 Nov | M7 |
+| TBD-11 | 5 Nov 2026, 23:59:59 IST, inclusive | 20 Oct | M1 launch |
+| TBD-12 / 13 | Email and mobile (SMS once DLT is live); activation code to the participant's own contact, 72 h | 20 Oct | B-06, imports |
+| TBD-39 | Six text questions as edition configuration; no uploads (**built**) | 20 Oct | B-07 |
+| TBD-45 | Adults only, by declaration (**built**) | 20 Oct | B-07 |
+| TBD-32 | Draft notice and retention schedule; **legal approval required** | 22 Oct | Launch |
+| TBD-36 / 46 | Organisers' entity owns all accounts; Supabase Pro ap-south-1, Cloud Run asia-south1, Vercel Pro; budget ceiling | 18 Oct | B-02, **everything deployable** |
+| TBD-38 | Website only before 5 Nov | 18 Oct | M1 scope |
+| TBD-08 | Junicorn rules do not apply | 20 Oct | Form fields |
+| TBD-15 | One startup per leader account; same-name startups flagged | 25 Oct | Duplicate policy |
+| TBD-19 | Confirmation required above the selection limit (**built**) | before first release | B-05 |
+| TBD-14 | In-app plus the verified sign-in contact; wording approval | before first release | B-05 in production |
+| TBD-01 | Draft criteria set v1 (five RQ §7 criteria, equal weights) | 6 Nov | M3 |
+| TBD-35 | Vertex AI; Meta Cloud API; Amazon SES; DLT SMS via Send SMS hook | 25 Oct | M3, M7 |
+| TBD-07 / 27 / 28 | 112 always shown; 5-minute emergency acknowledgement; minimum roster | 20 Nov | M7 |
 
 ## 10. Status in this repo
 
@@ -240,15 +246,15 @@ The 10-phase delivery breakdown and its status are in [PHASES.md](PHASES.md). Ar
   - CSV import runs validate → preview → commit.
   - Duplicates are detected within the file and against existing records. Shared mobile numbers are flagged. Password columns are rejected.
   - Imported accounts start as `pending_activation`, with edition-scoped roles and access.
-  - Activation codes are single-use and time-limited; only their hash is stored. The delivery channel is TBD-13, so Admins hand codes over manually for now.
+  - Activation codes are single-use and time-limited; only their hash is stored. Automated delivery to the participant's own contact follows once the providers are contracted (TBD-13); until then Admins hand codes over.
   - Admins can grant and revoke roles, deactivate and reactivate accounts. Nobody can change their own roles or status.
 - **Phase 4, mobile app:**
   - Expo app for Android and iOS: sign-in, activation, role-aware home, registration, per-year status and messages.
   - It compiles for Android, iOS and web, and runs end-to-end in a phone-sized browser.
-- **Provisional items:**
-  - Import column layout (TBD-41).
-  - Activation validity period: 72 h by default, configurable.
-  - Admin-to-participant delivery of codes (TBD-13).
+- **Awaiting approval** (decisions in DECISIONS.md):
+  - Import column set v1 (TBD-41).
+  - Activation validity period: 72 h, configurable (TBD-13).
+  - Automated delivery of codes (TBD-13).
 
 ### First vertical slice (M1)
 
@@ -265,7 +271,7 @@ Pinned versions: Node 22, Fastify 5.12, Next.js 16.4, React 19.3, Zod 4.6, TypeS
 | Release grants edition access and sends an in-app notification; re-release is a no-op | ✅ AT-14 |
 | 2027-only applicants get no 2026 access | ✅ AT-09 |
 | Editions independent (2026 rejection leaves 2027 under review) | ✅ AT-10 |
-| Selection limit configurable, warns when exceeded | ✅ AT-15. Current behaviour: drafting is never blocked; release is **permitted** above the limit and returns a warning; the list shows drafted + released selections against the limit. Whether to block, require confirmation or only warn is **TBD-19** (not decided; behaviour kept as is). |
+| Selection limit configurable, warns when exceeded | ✅ AT-15. Drafting is never blocked. A release above the limit is refused (`selection_limit_exceeded`) unless the manager confirms it (`confirmOverLimit`). The confirmed release returns a warning and is audited separately (TBD-19, awaiting Management approval). |
 | Audit trail; volunteer one-to-one, ticket-status and WhatsApp-identity constraints | ✅ AT-34 (slice), DC-04…08, DC-11, DC-13 |
 | Staff MFA enforcement switch; account linking only via identifiers proven by the IdP record; activation enforced server-side for all 8 roles | ✅ `auth.test.ts`, `security.test.ts` (security fix, 15 Oct 2026) |
 

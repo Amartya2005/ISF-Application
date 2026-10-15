@@ -84,7 +84,18 @@ function Applications() {
               onClick={() => {
                 if (confirm(`Release ${drafts.length} decision(s) for ${year}? Applicants will be notified and this cannot be undone.`)) {
                   void act(async () => {
-                    const r = await api.manage.release(year);
+                    let r: Awaited<ReturnType<typeof api.manage.release>>;
+                    try {
+                      r = await api.manage.release(year);
+                    } catch (e) {
+                      // TBD-19: above the selection limit, a release needs a second, explicit confirmation (audited).
+                      if (!(e instanceof ApiError) || e.code !== "selection_limit_exceeded") throw e;
+                      if (!confirm(`${e.message}\n\nRelease above the limit anyway? This confirmation is recorded in the audit log.`)) {
+                        setMessage("Nothing was released.");
+                        return;
+                      }
+                      r = await api.manage.release(year, undefined, { confirmOverLimit: true });
+                    }
                     setMessage(`Released ${r.released} (${r.selected} selected, ${r.notSelected} not selected).${r.warnings.length ? " " + r.warnings.join(" ") : ""}`);
                   });
                 }
@@ -104,7 +115,7 @@ function Applications() {
               e.preventDefault();
               void act(() => api.manage.setLimit(year, limit ? Number(limit) : null), "Selection limit saved.");
             }}>
-              <label>Selection limit (warning only)
+              <label>Selection limit (releasing above it needs confirmation)
                 <input type="text" inputMode="numeric" placeholder="none" value={limit} onChange={(e) => setLimit(e.target.value.replace(/\D/g, ""))} />
               </label>
               <button className="btn btn-sm" disabled={busy}>Save</button>

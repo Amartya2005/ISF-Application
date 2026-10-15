@@ -1,5 +1,5 @@
 // Bulk import of predefined participants (PRD §5, FR-IMP-01…11): validate → preview → commit.
-// The CSV columns are PROVISIONAL until the organisers' data format is agreed (TBD-41); see IMPORT_COLUMNS.
+// CSV column set v1 (TBD-41, docs/DECISIONS.md), awaiting the organisers' sign-off on a real sample; see IMPORT_COLUMNS.
 import { createHash } from "node:crypto";
 import {
   IMPORT_COLUMNS,
@@ -242,7 +242,7 @@ async function analyseStartups(db: Db, out: Analysed[]) {
       const leads = m.find((x) => x.position === "leader");
       if (r.data.position === "leader" && leads) {
         r.outcome = "invalid"; r.action = null;
-        r.errors.push({ field: "email", reason: `This person already leads "${leads.name}" (one startup per leader, interim rule TBD-15)` });
+        r.errors.push({ field: "email", reason: `This person already leads "${leads.name}" (one startup per leader, TBD-15)` });
       } else if (m.length) {
         r.warnings.push({ field: "email", reason: `This person is already part of ${m.map((x) => `"${x.name}"`).join(", ")}` });
       }

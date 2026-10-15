@@ -1,5 +1,5 @@
 // In-app notifications (FR-NOT-*). Push, email, SMS and WhatsApp channels plug in later behind the same outbox
-// (channels for results are TBD-14). Idempotency keys make re-sends harmless (FR-NOT-04).
+// (results: in-app plus the verified sign-in contact, TBD-14 in docs/DECISIONS.md). Idempotency keys make re-sends harmless (FR-NOT-04).
 import type { NotificationItem } from "@sj/contracts";
 import type { Db } from "../../db/client.js";
 
@@ -24,7 +24,7 @@ export async function myNotifications(db: Db, userId: string): Promise<Notificat
 
 /**
  * Result notification wording (FR-SEL-05/06). DRAFT COPY — must be approved by the Management Team before
- * the first production release (TBD-14). Kept here so the text is reviewable in one place.
+ * the first production release (TBD-14, docs/DECISIONS.md). Kept here so the text is reviewable in one place.
  */
 export function resultMessage(o: { outcome: "selected" | "not_selected"; year: number; startupName: string; hasLaterApplication: boolean }) {
   if (o.outcome === "selected") {

@@ -4,6 +4,8 @@ import {
   PRIVACY_NOTICE_VERSION,
   RegistrationRequest,
   applicantStatus,
+  checkFormAnswers,
+  mergeQuestions,
   yearsFor,
   type InternalStatus,
   type MyApplicationsResponse,
@@ -30,6 +32,13 @@ export async function register(sql: Sql, p: Principal, input: Input, now: Date):
       `Registration for ${closed.join(" and ")} is closed. You can still choose any edition that is open.`, { editions: closed });
   }
 
+  // TBD-39: answers are checked against each chosen edition's configured questions; unknown keys are rejected.
+  const questions = mergeQuestions(editions.map((e) => e.applicationForm));
+  const answers = Object.fromEntries(Object.entries(input.formAnswers ?? {}).map(([k, v]) => [k, v.trim()]));
+  const issues = checkFormAnswers(questions, answers);
+  if (issues.length) throw new AppError(400, "validation_failed", "Some fields are invalid", undefined, { errors: issues });
+  const formVersion = new Map(editions.map((e) => [e.id, e.applicationForm.version]));
+
   return sql.begin(async (tx) => {
     const account = await ensureApplicantAccount(tx, p, input);
     // Serialise concurrent registrations by the same person (double-clicks, retries).
@@ -40,7 +49,7 @@ export async function register(sql: Sql, p: Principal, input: Input, now: Date):
       where not exists (select 1 from role_grants where user_id = ${account.id} and role = 'startup_team_leader'
                         and edition_id is null and revoked_at is null)`;
 
-    // Interim duplicate rule (TBD-15): one startup per leader account; same-named startups are flagged, not blocked.
+    // Duplicate rule (TBD-15, docs/DECISIONS.md): one startup per leader account; same-named startups are flagged, not blocked.
     const [existing] = await tx<{ id: string; name: string; origin: string }[]>`
       select s.id, s.name, s.origin from startups s
       join startup_memberships m on m.startup_id = s.id and m.user_id = ${account.id} and m.position = 'leader'`;
@@ -83,8 +92,8 @@ export async function register(sql: Sql, p: Principal, input: Input, now: Date):
     for (const year of years) {
       try {
         await tx`
-          insert into applications (startup_id, edition_id, form_answers, privacy_notice_version, flags, submitted_by)
-          values (${startupId}, ${year}, ${tx.json((input.formAnswers ?? {}) as never)}, ${PRIVACY_NOTICE_VERSION},
+          insert into applications (startup_id, edition_id, form_answers, form_version, privacy_notice_version, flags, submitted_by)
+          values (${startupId}, ${year}, ${tx.json(answers as never)}, ${formVersion.get(year) ?? null}, ${PRIVACY_NOTICE_VERSION},
                   ${tx.array(flags)}::text[], ${account.id})`;
       } catch (err) {
         // Safety net for races; the explicit check above handles the normal case (DC-01).
@@ -96,7 +105,8 @@ export async function register(sql: Sql, p: Principal, input: Input, now: Date):
     }
     await audit(tx, {
       actorUserId: account.id, action: "registration.submitted", entityType: "startup", entityId: startupId,
-      data: { years, reused, flags },
+      // TBD-45: the leader's 18+ confirmation is part of the audited submission record.
+      data: { years, reused, flags, adultDeclaration: input.adultDeclaration, formVersions: Object.fromEntries(formVersion) },
     });
     return { ...(await myApplications(tx, account.id)), startupReused: reused };
   });

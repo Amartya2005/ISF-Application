@@ -31,11 +31,11 @@ One central system: a **modular-monolith API over one PostgreSQL database**. All
 | Mobile | Expo (React Native), one app for Android and iOS, EAS Build/Submit | Same contracts and client. Content is server-driven. |
 | Audit | Append-only `audit_events` (trigger-protected) | Every privileged write records actor, time and scope. |
 | AI | Behind service interfaces inside the API (ranking, help desk) | AI never decides: Management decides selections. Help Desk access rules are enforced by the API, not by prompts. |
-| Hosting | API + workers: containers. Web: Vercel. Data/Auth/Storage: Supabase (ap-south-1). | Pending TBD-36 / TBD-46. The code is portable. |
+| Hosting | API + workers: containers (Cloud Run asia-south1). Web: Vercel. Data/Auth/Storage: Supabase (ap-south-1). | Recommended in [DECISIONS.md](DECISIONS.md) TBD-46, awaiting budget approval and organisation-owned accounts (TBD-36). The code is portable. |
 | Testing | Vitest integration tests on **real PostgreSQL**, plus Playwright browser end-to-end | Every rule and every permission gets a test. Nothing is reported as passing unless it was run. |
 
 ## Consequences
 
 - New features are added as new API modules, new contract types and new screens. They are never a separate service or a separate database unless a new ADR says so.
 - The console hosts the Admin, Management and Customer Support dashboards in one access-controlled web app. Each user sees only the sections their roles allow (RQ §4: "five interface types, not five independent applications").
-- Requirements marked **TBD** are built as configuration or as clearly labelled provisional behaviour. They are never guessed as business rules.
+- Every former TBD has a recorded decision in [DECISIONS.md](DECISIONS.md). Decisions still awaiting approval are built as configuration or as clearly labelled defaults, and are never presented as confirmed business rules.

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Fragment, use, useEffect, useState } from "react";
 import { formatIst } from "@sj/client";
-import type { ManageApplication } from "@sj/contracts";
+import type { FormQuestion, ManageApplication } from "@sj/contracts";
 import { api, useSessionEmail } from "@/lib/session";
 
 export default function ApplicationDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -12,11 +12,18 @@ export default function ApplicationDetail({ params }: { params: Promise<{ id: st
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [questions, setQuestions] = useState<FormQuestion[]>([]);
 
   useEffect(() => {
     if (!email) return;
     api.manage.get(id).then((x) => { setA(x); setReason(x.decision?.reason ?? ""); }).catch((e: Error) => setError(e.message));
   }, [email, id]);
+
+  // Question wording comes from the edition's form configuration (TBD-39); unknown keys fall back to the key itself.
+  useEffect(() => {
+    if (!a) return;
+    api.editions().then((es) => setQuestions(es.find((e) => e.year === a.edition)?.applicationForm.questions ?? [])).catch(() => setQuestions([]));
+  }, [a?.edition]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function decide(outcome: "selected" | "not_selected") {
     setBusy(true);
@@ -50,7 +57,10 @@ export default function ApplicationDetail({ params }: { params: Promise<{ id: st
             <dt>Location</dt><dd>{[a.startup.city, a.startup.state].filter(Boolean).join(", ") || "—"}</dd>
             <dt>Submitted</dt><dd>{formatIst(a.submittedAt)} IST</dd>
             <dt>Other year</dt><dd>{a.otherEditions.map((o) => `${o.edition}: ${o.status}`).join(", ") || "—"}</dd>
-            {Object.entries(a.formAnswers).map(([k, v]) => <Fragment key={k}><dt>{k}</dt><dd>{String(v)}</dd></Fragment>)}
+            {Object.entries(a.formAnswers).map(([k, v]) => (
+              <Fragment key={k}><dt>{questions.find((q) => q.key === k)?.label ?? k}</dt><dd style={{ whiteSpace: "pre-wrap" }}>{String(v)}</dd></Fragment>
+            ))}
+            {a.formVersion && <><dt>Form version</dt><dd>{a.formVersion}</dd></>}
           </dl>
         </section>
         <section className="card">
@@ -70,7 +80,7 @@ export default function ApplicationDetail({ params }: { params: Promise<{ id: st
             </p>
           )}
           {released ? (
-            <p className="muted small">Released decisions cannot be changed until a reversal policy is agreed (TBD-37).</p>
+            <p className="muted small">Released decisions cannot be edited. A correction will need a written reason and a second Management approver (TBD-37); that process is not available yet.</p>
           ) : (
             <>
               <label>Reason (optional, internal)<textarea value={reason} onChange={(e) => setReason(e.target.value)} /></label>

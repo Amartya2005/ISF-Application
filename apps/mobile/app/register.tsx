@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Linking, Text } from "react-native";
 import { ApiError } from "@sj/client";
-import type { PublicEdition, RegistrationResponse, YearOption } from "@sj/contracts";
+import { checkFormAnswers, mergeQuestions, yearsFor, type PublicEdition, type RegistrationResponse, type YearOption } from "@sj/contracts";
 import { Button, Card, Check, Choice, Field, H1, H2, Notice, P, Screen, colors } from "../components/ui";
 import { WEB_URL } from "../lib/config";
 import { messageOf, useSession } from "../lib/session";
@@ -20,6 +20,8 @@ export default function Register() {
   const [year, setYear] = useState<YearOption | null>(null);
   const [f, setF] = useState({ name: "", description: "", website: "", city: "", state: "", fullName: me?.account?.fullName ?? "", mobile: me?.account?.mobile ?? "" });
   const [privacy, setPrivacy] = useState(false);
+  const [adult, setAdult] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -28,16 +30,28 @@ export default function Register() {
 
   useEffect(() => { api.editions().then(setEditions, (e) => setProblem(messageOf(e))); }, [api]);
   const open = (y: number) => !!editions?.find((e) => e.year === y)?.registration.open;
+  // Questions come from the chosen editions' form configuration (TBD-39), so wording changes need no app release.
+  const chosen = year ? yearsFor(year) : (editions ?? []).filter((e) => e.registration.open).map((e) => e.year);
+  const questions = mergeQuestions((editions ?? []).filter((e) => chosen.includes(e.year as 2026 | 2027)).map((e) => e.applicationForm));
 
   async function submit() {
     if (!year) { setErrors({ yearOption: "Choose which year(s) to apply for" }); return; }
+    const own = Object.fromEntries(questions.map((q) => [q.key, answers[q.key] ?? ""]));
+    const issues = checkFormAnswers(questions, own);
+    if (issues.length) {
+      setErrors(Object.fromEntries(issues.map((i) => [i.path, i.message])));
+      setProblem("Please answer every question.");
+      return;
+    }
     setBusy(true); setErrors({}); setProblem(null);
     try {
       setDone(await api.register({
         yearOption: year,
         startup: { name: f.name, description: f.description, website: f.website, city: f.city || undefined, state: f.state || undefined },
         leader: { fullName: f.fullName, mobile: f.mobile },
+        formAnswers: own,
         privacyNoticeAccepted: privacy as true,
+        adultDeclaration: adult as true,
       }));
     } catch (e) {
       if (e instanceof ApiError && e.problem.errors?.length) setErrors(e.fieldErrors());
@@ -77,6 +91,16 @@ export default function Register() {
         <Field label="City" value={f.city} onChangeText={set("city")} />
         <Field label="State" value={f.state} onChangeText={set("state")} />
       </Card>
+      {questions.length > 0 && (
+        <Card>
+          <H2>About your startup</H2>
+          {questions.map((q) => (
+            <Field key={q.key} label={`${q.label} *`} hint={`${q.help ? `${q.help} ` : ""}${q.minLength}–${q.maxLength} characters.`}
+              value={answers[q.key] ?? ""} onChangeText={(v) => setAnswers((a) => ({ ...a, [q.key]: v }))} multiline
+              maxLength={q.maxLength} error={errors[`formAnswers.${q.key}`]} />
+          ))}
+        </Card>
+      )}
       <Card>
         <H2>Team leader</H2>
         <Field label="Full name *" value={f.fullName} onChangeText={set("fullName")} autoComplete="name" error={errors["leader.fullName"]} />
@@ -89,6 +113,10 @@ export default function Register() {
         <Text>I have read the privacy notice *</Text>
       </Check>
       {errors.privacyNoticeAccepted ? <Text style={{ color: colors.danger }}>{errors.privacyNoticeAccepted}</Text> : null}
+      <Check label="I confirm that I am 18 years of age or older" checked={adult} onChange={setAdult}>
+        <Text>I confirm that I am 18 years of age or older *</Text>
+      </Check>
+      {errors.adultDeclaration ? <Text style={{ color: colors.danger }}>{errors.adultDeclaration}</Text> : null}
       <Button title="Submit application" busy={busy} onPress={() => void submit()} />
     </Screen>
   );

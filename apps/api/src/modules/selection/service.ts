@@ -10,14 +10,14 @@ import { getEdition } from "../editions/service.js";
 import { notifyInApp, resultMessage } from "../notifications/service.js";
 
 type Row = {
-  id: string; edition: number; status: InternalStatus; flags: string[]; submittedAt: Date; formAnswers: Record<string, unknown>;
+  id: string; edition: number; status: InternalStatus; flags: string[]; submittedAt: Date; formAnswers: Record<string, unknown>; formVersion: string | null;
   startupId: string; startupName: string; description: string | null; website: string | null; city: string | null; state: string | null;
   leaderId: string; leaderName: string; leaderEmail: string | null; leaderMobile: string | null;
   outcome: "selected" | "not_selected" | null; reason: string | null; decidedBy: string | null; decidedAt: Date | null; releasedAt: Date | null;
 };
 
 const SELECT = (db: Db) => db`
-  select a.id, a.edition_id as edition, a.status, a.flags, a.submitted_at as "submittedAt", a.form_answers as "formAnswers",
+  select a.id, a.edition_id as edition, a.status, a.flags, a.submitted_at as "submittedAt", a.form_answers as "formAnswers", a.form_version as "formVersion",
          s.id as "startupId", s.name as "startupName", s.description, s.website, s.city, s.state,
          u.id as "leaderId", u.full_name as "leaderName", u.email as "leaderEmail", u.mobile_e164 as "leaderMobile",
          d.outcome, d.reason, d.decided_by as "decidedBy", d.decided_at as "decidedAt", d.released_at as "releasedAt"
@@ -46,6 +46,7 @@ function toDto(r: Row, others: Map<string, { edition: number; status: InternalSt
       ? { outcome: r.outcome, reason: r.reason, decidedBy: r.decidedBy!, decidedAt: r.decidedAt!.toISOString(), releasedAt: r.releasedAt?.toISOString() ?? null }
       : null,
     formAnswers: r.formAnswers,
+    formVersion: r.formVersion,
   };
 }
 
@@ -82,7 +83,7 @@ export async function draftDecision(sql: Sql, p: Principal, id: string, input: D
       where a.id = ${id} for update of a`;
     if (!app) throw notFound("Application");
     if (app.releasedAt) throw new AppError(409, "decision_released", "Decision already released",
-      "Released decisions cannot be changed until a reversal policy is agreed (TBD-37).");
+      "Released decisions cannot be edited. Corrections need the two-person correction process (TBD-37), which is not available yet.");
 
     // FR-SEL-08: record the AI rank at decision time once ranking exists (M3); null in this slice.
     const [rank] = await tx<{ rank: number | null }[]>`
@@ -107,7 +108,8 @@ export async function withdrawDraft(sql: Sql, p: Principal, id: string): Promise
       select d.released_at as "releasedAt", d.status_before_decision as before, a.edition_id as edition
       from selection_decisions d join applications a on a.id = d.application_id where d.application_id = ${id} for update`;
     if (!d) throw new AppError(404, "no_draft", "Not found", "There is no draft decision for this application");
-    if (d.releasedAt) throw new AppError(409, "decision_released", "Decision already released", "Released decisions cannot be withdrawn (TBD-37).");
+    if (d.releasedAt) throw new AppError(409, "decision_released", "Decision already released",
+      "Released decisions cannot be withdrawn. Corrections need the two-person correction process (TBD-37), which is not available yet.");
     await tx`delete from selection_decisions where application_id = ${id}`;
     await tx`update applications set status = ${d.before} where id = ${id}`;
     await audit(tx, { actorUserId: p.account!.id, action: "decision.draft_withdrawn", entityType: "application", entityId: id, editionId: d.edition });
@@ -115,10 +117,20 @@ export async function withdrawDraft(sql: Sql, p: Principal, id: string): Promise
   return getApplication(sql, id);
 }
 
-/** Releases drafted decisions: applicants see the outcome, selected leaders gain edition access, everyone is notified. */
-export async function releaseDecisions(sql: Sql, p: Principal, year: number, ids?: string[]): Promise<ReleaseResponse> {
-  const edition = await getEdition(sql, year);
+/**
+ * Releases drafted decisions: applicants see the outcome, selected leaders gain edition access, everyone is notified.
+ * TBD-19 (docs/DECISIONS.md): a release that would take the edition above its selection limit is refused unless the
+ * manager confirms it explicitly (`confirmOverLimit`); a confirmed over-limit release is audited separately.
+ */
+export async function releaseDecisions(
+  sql: Sql, p: Principal, year: number, ids?: string[], opts: { confirmOverLimit?: boolean } = {},
+): Promise<ReleaseResponse> {
+  await getEdition(sql, year);
   return sql.begin(async (tx) => {
+    // Serialise releases per edition so two managers cannot both pass the limit check at the same time.
+    const [locked] = await tx<{ selectionLimit: number | null }[]>`
+      select selection_limit as "selectionLimit" from event_editions where id = ${year} for update`;
+    const limit = locked?.selectionLimit ?? null;
     const drafts = await tx<{ id: string; outcome: "selected" | "not_selected"; startupId: string; startupName: string; leaderId: string }[]>`
       select a.id, d.outcome, s.id as "startupId", s.name as "startupName", m.user_id as "leaderId"
       from selection_decisions d
@@ -132,6 +144,21 @@ export async function releaseDecisions(sql: Sql, p: Principal, year: number, ids
       throw new AppError(409, "not_releasable", "Some applications have no unreleased draft decision",
         "Release only applications that have a draft decision in this edition.");
     }
+    const [already] = await tx<{ n: number }[]>`
+      select count(*)::int as n from applications where edition_id = ${year} and status = 'selected'`;
+    const adding = drafts.filter((d) => d.outcome === "selected").length;
+    const selectedAfter = (already?.n ?? 0) + adding;
+    // Only a release that adds selections can push the edition over the limit; releasing "not selected" never needs it.
+    const overLimit = limit !== null && adding > 0 && selectedAfter > limit;
+    if (overLimit && !opts.confirmOverLimit) {
+      throw new AppError(409, "selection_limit_exceeded", "Above the selection limit",
+        `Releasing these decisions would make ${selectedAfter} startups selected for ${year}, above the configured limit of ${limit}. ` +
+        "Confirm explicitly to release anyway, or change the drafts or the limit.", { limit, selectedAfterRelease: selectedAfter });
+    }
+    if (overLimit) {
+      await audit(tx, { actorUserId: p.account!.id, action: "selection.limit_exceeded_confirmed", entityType: "event_edition",
+        entityId: String(year), editionId: year, data: { limit, selectedAfterRelease: selectedAfter, released: drafts.length } });
+    }
     let selected = 0;
     for (const d of drafts) {
       await tx`update selection_decisions set released_at = now(), released_by = ${p.account!.id} where application_id = ${d.id}`;
@@ -139,7 +166,7 @@ export async function releaseDecisions(sql: Sql, p: Principal, year: number, ids
       if (d.outcome === "selected") {
         selected += 1;
         // FR-REG-09 / FR-SEL-05: only management-selected applicants gain access to this edition.
-        // Team members' access waits for TBD-16 (how members are onboarded).
+        // Team members get accounts only after selection, added by the Admin (TBD-16, docs/DECISIONS.md).
         await tx`
           insert into edition_access (user_id, edition_id, source, granted_by)
           select ${d.leaderId}, ${year}, 'selected', ${p.account!.id}
@@ -154,11 +181,11 @@ export async function releaseDecisions(sql: Sql, p: Principal, year: number, ids
         editionId: year, data: { outcome: d.outcome, notification: "in_app" } });
     }
     const warnings: string[] = [];
-    if (edition.selectionLimit !== null) {
+    if (limit !== null) {
       const [n] = await tx<{ n: number }[]>`
         select count(*)::int as n from applications where edition_id = ${year} and status = 'selected'`;
-      if ((n?.n ?? 0) > edition.selectionLimit) {
-        warnings.push(`${n!.n} startups are now selected for ${year}, above the configured limit of ${edition.selectionLimit}.`);
+      if ((n?.n ?? 0) > limit) {
+        warnings.push(`${n!.n} startups are now selected for ${year}, above the configured limit of ${limit} (confirmed by you).`);
       }
     }
     return { released: drafts.length, selected, notSelected: drafts.length - selected, warnings };

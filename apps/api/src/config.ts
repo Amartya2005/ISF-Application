@@ -15,8 +15,8 @@ const Env = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:3000,http://localhost:3001"),
   LOG_LEVEL: z.string().default("info"),
   REGISTRATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
-  // Activation codes are single-use and time-limited (FR-IAM-10). The validity period is not specified in the
-  // requirements; 72 hours is a provisional default the organisers can change.
+  // Activation codes are single-use and time-limited (FR-IAM-10). 72 hours is the recommended validity (TBD-13,
+  // docs/DECISIONS.md), awaiting organiser approval; it stays configurable.
   ACTIVATION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
   ACTIVATION_RATE_LIMIT: z.coerce.number().int().positive().default(10),
   // Explicit sign-off that every item in docs/LAUNCH_CHECKLIST.md is complete. Required to start in production.

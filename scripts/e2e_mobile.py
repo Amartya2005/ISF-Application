@@ -14,6 +14,22 @@ import time
 import urllib.request
 from playwright.sync_api import expect, sync_playwright
 
+# Answers to the configured application form (migration 0007, TBD-39); matched by the start of each question.
+FORM_ANSWERS = [
+    ("What problem are you solving", "Forest-dwelling women's collectives lack a steady market for their produce."),
+    ("What is your solution", "Branded sal-leaf tableware sold directly to caterers in Bhubaneswar and Vizag."),
+    ("What stage is the startup at", "Pilot: 12 collectives, 4 caterers buying monthly since August."),
+    ("Who are your customers", "Caterers and hotels in eastern India that must replace single-use plastic."),
+    ("What economic, social or environmental impact", "Regular income for 300 women and less plastic waste."),
+    ("Who is in the founding team", "A product designer and a supply-chain manager with rural retail experience."),
+]
+
+
+def fill_form_answers(page):
+    for start, text in FORM_ANSWERS:
+        page.get_by_label(re.compile("^" + re.escape(start))).fill(text)
+
+
 API, APP = "http://localhost:4000", "http://localhost:8081"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 stamp = str(int(time.time()))
@@ -67,7 +83,9 @@ with sync_playwright() as p:
     page.get_by_label("What does your startup do? *").fill("Too short")
     page.get_by_label("Full name *").fill("Laxmi Gond")
     page.get_by_label("Mobile number *").fill("98765 43210")
+    fill_form_answers(page)
     page.get_by_role("checkbox", name="I have read the privacy notice").click()
+    page.get_by_role("checkbox", name="I confirm that I am 18 years of age or older").click()
     page.get_by_role("button", name="Submit application").click()
     expect(page.get_by_text(re.compile(r"at least 20|>=20|too small", re.I)).first).to_be_visible()   # server-side field error
     page.get_by_label("What does your startup do? *").fill("Stone-ground millet flour from tribal farmer collectives in Rayagada.")

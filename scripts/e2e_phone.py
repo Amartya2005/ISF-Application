@@ -8,6 +8,22 @@ import sys
 import time
 from playwright.sync_api import expect, sync_playwright
 
+# Answers to the configured application form (migration 0007, TBD-39); matched by the start of each question.
+FORM_ANSWERS = [
+    ("What problem are you solving", "Forest-dwelling women's collectives lack a steady market for their produce."),
+    ("What is your solution", "Branded sal-leaf tableware sold directly to caterers in Bhubaneswar and Vizag."),
+    ("What stage is the startup at", "Pilot: 12 collectives, 4 caterers buying monthly since August."),
+    ("Who are your customers", "Caterers and hotels in eastern India that must replace single-use plastic."),
+    ("What economic, social or environmental impact", "Regular income for 300 women and less plastic waste."),
+    ("Who is in the founding team", "A product designer and a supply-chain manager with rural retail experience."),
+]
+
+
+def fill_form_answers(page):
+    for start, text in FORM_ANSWERS:
+        page.get_by_label(re.compile("^" + re.escape(start))).fill(text)
+
+
 WEB = "http://localhost:3000"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 stamp = str(int(time.time()))
@@ -32,7 +48,9 @@ with sync_playwright() as p:
     page.get_by_label(re.compile("What does your startup do")).fill("Handwoven sabai grass products from Mayurbhanj artisan groups.")
     page.get_by_label("Full name *").fill("Champa Murmu")
     page.get_by_label(re.compile("Mobile number")).fill(mobile)
+    fill_form_answers(page)
     page.get_by_label(re.compile("I have read the")).check()
+    page.get_by_label(re.compile("18 years of age or older")).check()
     page.get_by_role("button", name="Submit application").click()
     expect(page.get_by_text(f"Application submitted for {startup}.")).to_be_visible()
     page.get_by_role("link", name="View application status").click()

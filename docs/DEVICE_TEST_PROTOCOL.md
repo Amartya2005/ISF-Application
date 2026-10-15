@@ -19,13 +19,13 @@ The keychain session store is unit-tested (`apps/mobile/lib/chunked-store.test.t
 | D5 | Turn on airplane mode, reopen the app, wait past expiry, then turn airplane mode off and pull to refresh or reopen. | Recovers without a crash. If the refresh token was rejected, a clean sign-out, never a stuck screen. |
 | D6 | Restart the phone, then open the app. | Still signed in. On Android, the keystore entries survive the reboot. |
 | D7 | **Sign out**, then force-quit and reopen. | Signed out. On staging Supabase the session is revoked (check Auth → Users → sessions). |
-| D8 | Sign in, then **uninstall and reinstall** the app. | Android: signed out (keystore removed with the app). **iOS: the keychain can survive reinstall**, so the app may come back signed in. Record what happens and decide (see the note below). |
+| D8 | Sign in, then **uninstall and reinstall** the app. | **Signed out on both platforms** (decision OD-02). Android removes the keystore with the app. On iOS the keychain can survive a reinstall, so the app clears it on the first launch after a reinstall (see the note below). |
 | D9 | An imported participant signs in with the email or mobile the organisers hold, then enters the activation code. | The account becomes active, and the role and 2026 event card appear. Re-entering the code is refused. |
 | D10 | A staff-only account (Admin, Management or Support) signs in to the app. | The home screen says staff work is done in the web console. No privileged data appears. |
 | D11 | Staff MFA on a phone browser: open the **console** in Safari (iOS) and Chrome (Android), sign in as staff, then enrol and verify an authenticator code. | Privileged sections appear only after verifying. Signing out and back in asks for the code again. |
 | D12 | Revoke the account's role in the console while the app is open, then refresh the app. | Role-based content disappears on the next request. |
 
-**Note on D8 (iOS keychain persistence).** If the organisers want a reinstall to always sign the person out, add a first-launch check: keep a marker in app storage, which iOS deletes on uninstall, and clear the keychain session when the marker is missing. The current build does **not** do this; decide before launch.
+**Note on D8 (iOS keychain persistence).** Decision OD-02 ([docs/DECISIONS.md](/docs/DECISIONS.md)): a reinstall always signs the person out. The app keeps a marker in app storage, which iOS deletes on uninstall, and clears the keychain session when the marker is missing. This is **not built yet**; it is scheduled for Phase 6, before store submission. Until then, D8 on iOS is expected to fail.
 
 ## Results
 

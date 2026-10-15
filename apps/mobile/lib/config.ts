@@ -16,5 +16,5 @@ export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
 /** Public website, for the privacy notice and anything the app links out to. */
 export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL || API_URL.replace(/:4000$/, ":3000");
-/** One-time-code channels offered (TBD-12: email, mobile or both). Default: both. */
+/** One-time-code channels offered (TBD-12: email at launch, plus mobile once SMS is live). Unset: both (development). */
 export const SIGNIN_METHODS = parseSignInMethods(process.env.EXPO_PUBLIC_SIGNIN_METHODS);

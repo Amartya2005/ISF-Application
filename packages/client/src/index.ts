@@ -90,8 +90,12 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
       get: (id: string) => req<ManageApplication>("GET", `/v1/manage/applications/${id}`),
       decide: (id: string, body: DecisionRequest) => req<ManageApplication>("PUT", `/v1/manage/applications/${id}/decision`, body),
       withdraw: (id: string) => req<ManageApplication>("DELETE", `/v1/manage/applications/${id}/decision`),
-      release: (year: number, applicationIds?: string[]) =>
-        req<ReleaseResponse>("POST", `/v1/manage/editions/${year}/decisions/release`, applicationIds ? { applicationIds } : {}),
+      /** `confirmOverLimit`: explicit confirmation to release above the selection limit (TBD-19). */
+      release: (year: number, applicationIds?: string[], opts: { confirmOverLimit?: boolean } = {}) =>
+        req<ReleaseResponse>("POST", `/v1/manage/editions/${year}/decisions/release`, {
+          ...(applicationIds ? { applicationIds } : {}),
+          ...(opts.confirmOverLimit ? { confirmOverLimit: true } : {}),
+        }),
       setLimit: (year: number, limit: number | null) =>
         req<{ edition: number; selectionLimit: number | null }>("PUT", `/v1/manage/editions/${year}/selection-limit`, { limit }),
     },

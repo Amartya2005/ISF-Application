@@ -100,7 +100,19 @@ export function registration(overrides: { yearOption?: string; name?: string; mo
     yearOption,
     startup: { name, description: "Low-cost sensors for tribal agriculture co-operatives.", city: "Gunupur", state: "Odisha" },
     leader: { fullName: "Asha Patra", mobile },
+    formAnswers: { ...FORM_ANSWERS },
     privacyNoticeAccepted: true,
+    adultDeclaration: true,
     ...rest,
   };
 }
+
+/** Valid answers to the seeded application form (migration 0007, TBD-39). */
+export const FORM_ANSWERS: Record<string, string> = {
+  problem: "Smallholder co-operatives cannot see soil moisture in time to save crops.",
+  solution: "Solar sensors that report over SMS, priced for co-operatives rather than single farms.",
+  stage: "Pilot with three co-operatives in Rayagada since June; 40 paying members.",
+  market: "About 2,000 farmer co-operatives in southern Odisha, then neighbouring states.",
+  impact: "Fewer failed harvests and lower water use for tribal farming households.",
+  team: "Two founders: an electronics engineer and an agronomist with ten years in extension work.",
+};

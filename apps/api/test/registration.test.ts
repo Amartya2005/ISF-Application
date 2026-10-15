@@ -23,7 +23,7 @@ describe("registration access", () => {
     });
     expect(r.status).toBe(400);
     const paths = r.json.errors.map((e: { path: string }) => e.path);
-    expect(paths).toEqual(expect.arrayContaining(["yearOption", "startup.name", "startup.description", "leader.fullName", "leader.mobile", "privacyNoticeAccepted"]));
+    expect(paths).toEqual(expect.arrayContaining(["yearOption", "startup.name", "startup.description", "leader.fullName", "leader.mobile", "privacyNoticeAccepted", "adultDeclaration"]));
     expect(await count(t.sql)).toBe(0);
   });
 });
@@ -79,7 +79,7 @@ describe("AT-07 duplicate prevention", () => {
     expect(r.json.code).toBe("startup_mismatch");
   });
 
-  it("flags (does not block) a same-named startup from a different account (TBD-15 interim rule)", async () => {
+  it("flags (does not block) a same-named startup from a different account (TBD-15)", async () => {
     const r = await t.call("POST", "/v1/me/registrations", { as: "other@example.com", body: registration({ name: "  dup   LABS " }) });
     expect(r.status).toBe(201);
     const [a] = await t.sql`select flags from applications where id = ${r.json.applications[0].id}`;
@@ -131,7 +131,7 @@ describe("AT-08 server-enforced 2026 deadline", () => {
     t.setNow(BEFORE_DEADLINE);
   });
 
-  it("publishes the cut-off as provisional until TBD-11 is confirmed", async () => {
+  it("publishes the cut-off as unconfirmed until the organisers confirm TBD-11", async () => {
     const e = (await t.call("GET", "/v1/public/editions")).json.find((x: { year: number }) => x.year === 2026);
     expect(e.registration.closesAt).toBe("2026-11-05T18:29:59.000Z");
     expect(e.registration.closesAtConfirmed).toBe(false);

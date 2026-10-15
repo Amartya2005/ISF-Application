@@ -12,11 +12,11 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 
 ## A. Accounts and environments (TBD-36, TBD-46)
 
-- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0006 applied, Data API closed (see [docs/STAGING.md](/docs/STAGING.md)). Done 15 Oct 2026.
-- [ ] Organisation-owned Supabase **production** project (ap-south-1) on a paid plan with backups/PITR (budget TBD-46). Never use any personal project.
-- [ ] Cloud, domain, Vercel, GitHub organisation, and Apple/Google store accounts are owned by the organisers.
+- [x] Organisation-owned Supabase **staging** project: `startup-jathara-staging` in the ISF organisation, ap-south-1, migrations 0001–0007 applied, Data API closed (see [docs/STAGING.md](/docs/STAGING.md)). Done 15 Oct 2026.
+- [ ] Organisation-owned Supabase **production** project (ap-south-1) on the Pro plan, with PITR on during the critical windows (TBD-33, TBD-46; budget approval needed). Never use any personal project.
+- [ ] Cloud, domain, Vercel, GitHub organisation, WhatsApp Business and Apple/Google store accounts are owned by the organisers' legal entity (TBD-36). Store accounts are **organisation** accounts (a D-U-N-S number is needed; request it early). Zeny2Labs has member access only.
 - [ ] Secrets are stored in the secret manager. `SUPABASE_SERVICE_ROLE_KEY` goes to the API service only, never to any `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value.
-- [ ] Repository visibility is decided. It is currently public; the README recommends private until approval.
+- [ ] Repository made **private** until launch approval (OD-04, owner action). It is currently public.
 
 ## B. Live Supabase staging tests (B-06). The code is tested against Supabase-shaped data, not a live project.
 
@@ -31,7 +31,7 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 
 - [ ] Email OTP sign-in: a new applicant registers; their email is stored only after Supabase confirms it.
 - [ ] **Real email delivery:** OTP emails arrive at Gmail, Outlook and an institutional (e.g. GIET) inbox within a minute and not in spam. Custom SMTP and sender domain are configured (D1).
-- [ ] SMS OTP sign-in (needs the SMS provider and DLT registration, TBD-35): the phone-only applicant flow works; no email is stored.
+- [ ] SMS OTP sign-in (needs the DLT-registered sender and template through Supabase's Send SMS hook, TBD-35): the phone-only applicant flow works; no email is stored. Only then set the sign-in channels to `email,phone` (TBD-12).
 - [ ] **Real SMS delivery:** OTP SMS arrives on Jio, Airtel, Vi and BSNL numbers via the DLT-approved sender ID and template (D2). A test number does not count.
 - [ ] An unconfirmed email in the user's own metadata does **not** link to a pre-created staff account.
 - [ ] An imported participant signs in with the confirmed email/mobile, the account links, the activation code works, and the code can't be reused.
@@ -42,14 +42,24 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 - [ ] Mobile app on a real Android and iPhone: every case in [docs/DEVICE_TEST_PROTOCOL.md](/docs/DEVICE_TEST_PROTOCOL.md) (D1–D12) passes, and the iOS reinstall behaviour (D8) is decided.
 - [ ] `staging:verify` reports 0 failures and 0 skips, with all optional settings provided.
 
-## C. Content and policy decisions
+## C. Decision approvals ([docs/DECISIONS.md](/docs/DECISIONS.md))
 
-- [ ] **Privacy notice text approved** (TBD-32, DPDP review). Publish it on `/privacy` and bump `PRIVACY_NOTICE_VERSION` to the approved version.
-- [ ] Exact 2026 registration cut-off time confirmed (TBD-11); set `event_editions.closes_at_confirmed = true`.
-- [ ] Final application form fields (TBD-39) and result-notification wording (TBD-14).
-- [ ] Sign-in identifier decided (TBD-12). Set `NEXT_PUBLIC_SIGNIN_METHODS` / `EXPO_PUBLIC_SIGNIN_METHODS` accordingly.
-- [ ] Activation code delivery channel (TBD-13) and validity period (`ACTIVATION_TTL_HOURS`, provisional 72 h).
-- [ ] Import file format agreed with the organising team (TBD-41). The CSV template is provisional.
+Every TBD now has a recommended decision, and the code follows it. **None has been approved.** Tick an item only when the named approver confirms it in writing, and record who and when in the sign-off table.
+
+**Before the registration website goes live:**
+
+- [ ] **Legal: privacy notice approved** (TBD-32, DPDP review; draft in [docs/PRIVACY_NOTICE_DRAFT.md](/docs/PRIVACY_NOTICE_DRAFT.md)), together with the retention schedule, the 18+ policy (TBD-45) and vendors' cross-border processing (TBD-35). Publish it on `/privacy` and bump `PRIVACY_NOTICE_VERSION` to the approved version.
+- [ ] **Organisers: 2026 cut-off** 5 Nov 2026 23:59:59 IST (TBD-11). Then set `event_editions.closes_at_confirmed = true`.
+- [ ] **Organisers:** sign-in channels (TBD-12; set `NEXT_PUBLIC_SIGNIN_METHODS` / `EXPO_PUBLIC_SIGNIN_METHODS`), Junicorn rules not applied (TBD-08), website-only registration before 5 Nov (TBD-38), adults only (TBD-45), account-owning entity (TBD-36).
+- [ ] **Management: application form wording** (TBD-39; the six questions in migration 0007; change them only before the first application, because the form freezes after that), duplicate rule (TBD-15), selection-limit confirmation (TBD-19).
+
+**Before the phase that uses them:**
+
+- [ ] **Organisers:** activation delivery and 72 h validity (TBD-13); import column set v1 signed off on a real sample (TBD-41); team-member onboarding after selection (TBD-16); delegate scope and no QR/allocation modules (TBD-04, TBD-30); content ownership (TBD-24); Help Desk on the website as a WhatsApp link (TBD-25); English only (TBD-26); export permissions (TBD-31); descope checkpoints (OD-05).
+- [ ] **Organisers, before Phase 8:** emergency contacts (TBD-07), escalation windows (TBD-27), support roster (TBD-28).
+- [ ] **Management, before results are released (by 20 Nov, TBD-40):** criteria set approved by 6 Nov (TBD-01); result channels and wording (TBD-14); override reasons (TBD-18); correction and withdrawal policy (TBD-37), with the correction process built; scores never shared (TBD-44).
+- [ ] **Management, later phases:** TBD-05, TBD-10, TBD-17, TBD-20, TBD-21, TBD-22, TBD-23, TBD-29, TBD-42, TBD-43.
+- [ ] **Budget:** hosting and budget ceiling (TBD-46), PITR windows and service targets (TBD-33), vendor contracts and DPAs (TBD-35).
 
 ## D. Security and operations
 
@@ -60,6 +70,7 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 - [ ] Monitoring, error reporting and uptime checks in place; on-call contact named.
 - [ ] CI is green on the release commit (typecheck, API tests on Postgres, mobile unit tests, builds).
 - [ ] Browser end-to-end suite run against **staging** (`scripts/e2e_*.py`).
+- [ ] Mobile: sign-out on the first launch after a reinstall is built (OD-02), and device case D8 shows "signed out" on both platforms.
 
 ## Sign-off
 
