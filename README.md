@@ -1,366 +1,411 @@
 # Startup Jathara Management Platform
 
-**Zeny2Labs · Phases 1–4 implementation snapshot · Review before production use**
+**Built by Zeny2Labs for the International Startup Foundation (ISF) and GIET University**  
+**Current delivery:** Phases 1–7 of 10 implemented  
+**Production status:** **NOT APPROVED**  
+**Latest reported repository commit:** `3cc51fe`
 
-The Startup Jathara Management Platform is being built to support **Startup Jathara @ Dandakaranya**, organised by GIET University in association with the International Startup Foundation (ISF), at GIET University, Gunupur, Odisha. The event is scheduled for **18–20 December 2026**, with a pre-event day on **17 December 2026**.
+The Startup Jathara Management Platform supports event operations for Startup Jathara @ Dandakaranya, hosted at GIET University, Gunupur, Odisha. The 2026 event is scheduled for **18–20 December 2026**, with a pre-event day on **17 December 2026**. The platform supports year-specific workflows for the 2026 and 2027 editions.
 
-This repository contains **Phases 1–4 of 10**:
+This repository contains a working, tested application codebase for registration, account administration, AI-assisted ranking, jury evaluation, volunteer assignment, event information, documents, notices, and push-notification workflows. It is **not yet hosted as a complete environment**, and implemented integrations are not necessarily connected to live providers.
 
-- the registration vertical slice: **startup registration → Management review → selection decision release → applicant status**;
-- Admin bulk import, account activation and role administration;
-- the Android/iOS app foundation.
-
-It is an implementation baseline, not a complete delivery of every feature described in the PRD.
-
-The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (ADR-001). The 10 delivery phases are listed in [`docs/PHASES.md`](docs/PHASES.md).
-
-> **Not production-ready.** Real Supabase authentication (including the server-side `SUPABASE_SERVICE_ROLE_KEY` identity check), final application fields, approved privacy text, production hosting and security review are still required. Do not enter real participant data or deploy publicly until [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md) is signed off. **The API enforces this:** with `NODE_ENV=production` it refuses to start until Supabase sign-in, staff MFA, HTTPS-only origins, an approved (non-draft) privacy notice, a real ranking model (not the development stub), no log-only message providers and `LAUNCH_APPROVED=true` are all in place.
+> [!CAUTION]
+> **Do not deploy this application to production or enter real participant data.** The production launch gate is intentionally closed. Hosting, real authentication and messaging checks, privacy approval, operational sign-offs, security review, and other launch requirements remain outstanding. The API is designed to refuse production startup until required configuration and approvals are in place. See [the launch checklist](docs/LAUNCH_CHECKLIST.md).
 
 ## Project status
 
-### Implemented in this snapshot
-
-- Public Next.js website for 2026/2027 startup applications.
-- Management console for reviewing applications, drafting decisions and releasing results.
-- Fastify API and PostgreSQL-backed registration and selection workflows.
-- Separate application status for 2026 and 2027; registering for both creates independent applications.
-- Server-side enforcement of the configured registration deadline.
-- Database-backed duplicate prevention for a startup and event edition.
-- Management-only selection decisions and suppression of unreleased decisions from applicant views.
-- Edition access granted as part of a released selection decision.
-- Shared Zod contracts, a typed API client, SQL migrations, seed data and CI workflow.
-- API integration tests and a browser end-to-end smoke test.
-- **Security hardening** (see [`docs/SECURITY_FIX_2026-10-15.md`](docs/SECURITY_FIX_2026-10-15.md)):
-  - email/phone verification is read from the authoritative Supabase user record, never from editable token claims;
-  - pre-created accounts are linked to a sign-in only through a verified email or phone (fail-closed);
-  - account activation status is enforced server-side for all roles.
-- **Phase 3, Admin:**
-  - CSV import of predefined startups, jury, volunteers and delegates, run as validate → preview → commit;
-  - errors are reported by row and field; duplicates and shared mobile numbers are detected; password columns are rejected;
-  - imported accounts start as pending activation;
-  - activation codes are single-use and time-limited, and only their hash is stored;
-  - Admins can grant and revoke roles, deactivate and reactivate accounts; nobody can change their own roles or status;
-  - `GET /v1/me`, and a website activation page.
-- **Phase 4, mobile:** an Expo (SDK 57) app for Android and iOS on the same API, with sign-in, activation, a role-aware home screen, startup registration, per-year application status and messages.
-- **Sign-in by email or mobile number** (one-time code by email or SMS) on the website and the app. Decision TBD-12 ([`docs/DECISIONS.md`](docs/DECISIONS.md)): both channels; deployed environments offer email only until the DLT-registered SMS sender is live.
-- **Mobile session in the device keychain/keystore**, never in plain storage.
-- **Staff MFA policy:** mandatory in production. Admin, Management and Support complete an authenticator-app step before any privileged action.
-- **Import hardening:** malformed rows (shifted columns, control characters, unreadable text, oversized cells, spreadsheet-formula prefixes) are rejected row by row.
-- **Decisions on every open TBD** (15 Oct 2026, [`docs/DECISIONS.md`](docs/DECISIONS.md)), most awaiting organiser, Management, legal or budget approval. Built from them:
-  - the application form's six questions are edition configuration (migration 0007), served to the website and app and frozen once applications exist (TBD-39);
-  - applicants confirm they are 18 or older (TBD-45);
-  - releasing decisions above the selection limit needs explicit, audited confirmation (TBD-19).
-- **Phase 5, AI ranking and selection** (details in [`docs/PHASES.md`](docs/PHASES.md)):
-  - versioned criteria sets that Management creates and approves; draft v1 (TBD-01) ships unapproved;
-  - ranking runs over a whole edition after its registration closes (TBD-42), scored by a model adapter (Google Vertex AI, or a development stub that is **not an AI**), validated, weighted and ranked outside the model; incomplete or invalid results go to manual review; steering attempts are flagged;
-  - the ranking worker runs as a database role that cannot write decisions or read contact data (AT-11);
-  - overrides of the ranking need a written reason (TBD-18); released decisions change only through a two-person correction (TBD-37); applicants can withdraw a year's application;
-  - result, correction and activation messages by email or SMS through an outbox with per-message status (TBD-13, TBD-14);
-  - `pnpm --filter @sj/api ranking:eval` evaluates a model on synthetic applications.
-- **Phase 6, jury evaluation and volunteer assignment** (details in [`docs/PHASES.md`](docs/PHASES.md)):
-  - Management versions and approves the jury rubric (draft v1 ships unapproved, TBD-43), assigns jurors to startups, schedules pitches and marks the startup currently pitching;
-  - jurors (app) see only their assigned startups and the current pitch, without contact details or AI data; they save drafts and submit scores, which are then locked; Management reviews them per rubric version, with no winner, and can reopen one with a reason;
-  - jury scores are kept apart from AI ranking and selection: the ranking worker has no access to jury tables, and scoring changes no application, ranking or decision;
-  - random, reproducible one-to-one volunteer assignment as a draft for Management review; shortages are listed as unassigned targets, never doubled up; reassignment and ending keep a full history (who, when, why); concurrent requests cannot double-assign;
-  - volunteers and targets see each other's name and mobile number in the app (TBD-49) and are told through in-app notices and the email/SMS outbox (TBD-48).
-
-- **Phase 7, event information and notices** (details in [`docs/PHASES.md`](docs/PHASES.md)):
-  - one published copy of the schedule, venues, food, accommodation, travel, safety guidelines, emergency contacts and information pages for the website's Programme page and the app, with drafts, change summaries, versions and a "last updated" time; 17 December is labelled the pre-event day everywhere;
-  - the Admin maintains source information and documents, Management the operational information (TBD-24), enforced on the server; each item and document has an audience (public, all participants or roles);
-  - the RQ §2 tentative programme is seeded as unpublished drafts (TBD-06); 112 is always the first emergency number;
-  - documents (PDF, PNG, JPEG) in private storage, opened through 60-second links after an audience check (TBD-51);
-  - notices from Management to everyone, roles or authorised groups of one edition, in the app inbox and as push notifications, with recipient checks, delivery figures, audited corrections and withdrawals (TBD-29, TBD-53); push through the Expo push service with receipt checks (TBD-52; not yet verified on real devices).
-
-The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
-
-- 384 API tests (integration tests against PostgreSQL, plus unit tests);
-- 8 mobile unit tests;
-- nine browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, AI ranking through to a two-person correction, jury scoring plus volunteer assignment, and event information plus notices across the console, the website and the app. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
-
-### Planned / not yet complete
-
-- Production identity configuration (Supabase production).
-- Live provider accounts: Vertex AI for ranking, Amazon SES for email, MSG91 with DLT templates for SMS (TBD-35). The adapters are built and tested against recorded request formats, not yet against live accounts. Until a provider is configured, messages stay queued and activation codes are handed over manually.
-- Organisers' sign-off of import column set v1 on a real sample file (TBD-41).
-- Sign-out on the first app launch after a reinstall (OD-02), required before store submission.
-- Live push notifications on real devices (needs an EAS project and FCM/APNs credentials under the organisation's accounts, TBD-36, TBD-52) and the private Supabase Storage bucket on staging (TBD-51).
-- The Help Desk in the app and on WhatsApp (Phase 8), and app-store builds (needs organisation-owned Apple/Google accounts, TBD-36).
-- AI Help Desk, WhatsApp integration, customer-support workflows and emergency escalation.
-- Production deployment, load/security testing and disaster-recovery validation.
-
-See the [Technical Execution Plan](docs/EXECUTION_PLAN.md) for dependencies, acceptance criteria, blockers and milestone status.
-
-## Event rules represented in the implementation
-
-- Applicants may apply for **2026 only**, **2027 only**, or **both**.
-- Each year's application status is independent. A 2026 rejection must not automatically reject a 2027 application.
-- A 2027-only applicant must not receive 2026 event access.
-- An application for the same startup and edition may be submitted only once.
-- AI ranking (planned) is advisory. **Management makes every final startup selection/rejection decision.**
-- Each volunteer will eventually be assigned to exactly one target: **one startup OR one jury member**, never both. Volunteer assignment is not yet implemented as a complete user workflow.
-
-The 2026 registration deadline is **5 November 2026**. The recommended cut-off is `23:59:59 IST` on that day (TBD-11, [`docs/DECISIONS.md`](docs/DECISIONS.md)); it awaits the organisers' written confirmation, and the website shows "time to be confirmed" until `closes_at_confirmed` is set.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Applicant[Public Website / Applicant] --> API[Fastify API]
-  Console[Management Console] --> API
-  API --> Auth[Local Dev Auth / Supabase Auth]
-  API --> DB[(PostgreSQL)]
-  API --> Jobs[Notification / Background Job Foundation]
-  DB --> Audit[Audit Events]
-```
-
-The API is a TypeScript modular monolith. PostgreSQL migrations are the schema source of truth. Authentication identifies the caller; application-level permissions and record relationships determine what the caller may do. The planned ranking and Help Desk services must remain separate, and AI components must never receive final selection authority.
-
-### Repository layout
-
-```text
-apps/
-  api/                  Fastify API, domain modules, SQL access and tests
-  web/                  Public website and applicant pages (Next.js)
-  console/              Admin / Management console (Next.js); sections shown by permission
-  mobile/               Android + iOS app (Expo SDK 57, Expo Router)
-packages/
-  contracts/            Shared Zod schemas and TypeScript types
-  client/               Typed API client
-  web-session/          Browser session and auth adapter
-db/migrations/           Forward-only SQL migrations
-docs/ARCHITECTURE.md     ADR-001: the locked architecture
-docs/PHASES.md           The 10 delivery phases and their status
-docs/EXECUTION_PLAN.md   Stack, API boundaries, schema, backlog and risks
-docs/DECISIONS.md        Decision register: every TBD resolved, with the approvals still needed
-scripts/                 Local database and browser-test helpers
-.github/workflows/       Continuous integration workflow
-```
-
-## Technology stack
-
-| Layer | Current direction |
+| Area | Current status |
 |---|---|
-| Language | TypeScript; Node.js 22 or newer |
-| Package manager | pnpm 10 (workspace monorepo) |
-| API | Fastify 5, Zod validation, SQL-first migrations |
-| Database | PostgreSQL 16+ |
-| Website and console | Next.js 16 / React 19 |
-| Mobile | Expo SDK 57 / React Native 0.86, Expo Router; one app for Android and iOS |
-| Production identity (planned) | Supabase Auth OTP; API-enforced authorisation |
-| Background jobs (planned) | pg-boss with PostgreSQL |
-| Proposed hosting | Supabase in Mumbai, Cloud Run in Mumbai, Vercel in Mumbai; budget/account ownership TBD |
+| Foundation, API, database, roles, permissions and audit log | Implemented |
+| Registration and Management selection workflow | Implemented |
+| Admin imports, account activation and role management | Implemented |
+| Cross-platform Android/iOS app foundation | Implemented; not in app stores |
+| AI-assisted ranking and human-controlled decisions | Implemented; real model not connected |
+| Jury evaluation and volunteer assignment | Implemented |
+| Event information, private-document workflow, notices and push support | Implemented; live storage and push still need verification |
+| Staging API, website and console hosting | Not hosted yet |
+| Production deployment | Not approved |
+| Real email/SMS provider delivery | Not verified live |
+| Real AI ranking model | Not connected or evaluated against a live provider |
+| Phase 8 Help Desk, customer support and emergency workflows | Next implementation phase |
+| Phase 9 offline mode, reports and audit view | Planned |
+| Phase 10 security review, performance/recovery tests and launch | Planned |
 
-Hosting choices are recommendations, not confirmed commercial or deployment commitments.
+### Latest reported verification
 
-## Getting started
+The Phase 7 delivery reports the following checks passing on **16 October 2026**:
 
-### Prerequisites
+- **384 API tests**.
+- **8 mobile tests**.
+- **9 browser end-to-end flows**, run against fresh databases.
+- Type checks and production builds.
+- GitHub Actions passed for the Phase 7 delivery.
 
-- Node.js 22+
-- pnpm 10.x
-- PostgreSQL 16+, or Docker with Docker Compose
-- Python 3 for the optional Playwright smoke-test script
+These are the reported results for the checked code and test environments. They do **not** prove live email/SMS delivery, real AI quality, real-device push delivery, production deployment, or store approval. Re-run checks in your own environment before relying on them.
 
-### 1. Install dependencies
+## Interfaces
 
-```bash
-pnpm install
-cp .env.example .env
-```
+The requirements define **five interfaces over one platform**:
 
-The default local configuration uses `AUTH_MODE=dev` and does not require external accounts. **Development authentication is for local development only. Never use it in staging or production.**
+1. **Public website** — event programme, startup registration, application status, activation and public information.
+2. **Shared mobile app** — one Expo codebase for Android and iOS, with role-aware participant screens.
+3. **Admin dashboard** — imported data, user accounts, access roles, official source information and documents.
+4. **Management dashboard** — applications, ranking review, selection decisions, jury workflows, volunteer assignments, operational event information and notices.
+5. **Customer Support dashboard** — planned for Phase 8; ticket triage, participant support and emergency escalation.
 
-### 2. Start PostgreSQL
+The Admin and Management dashboards are sections of a single access-controlled console, not separate deployable applications. The API enforces permissions; hiding a screen or menu item is not a security boundary.
 
-Use the included helper if PostgreSQL server utilities are installed:
+## Implemented capabilities
 
-```bash
-pnpm db:start
-```
+### Registration and selection
 
-Alternatively, start the Compose database:
+- Startup teams can apply for 2026, 2027 or both editions.
+- Each edition has a separate application and status.
+- Deadline checks are enforced server-side.
+- Duplicate applications for the same startup and edition are blocked; possible name matches can be flagged for Management review.
+- Management can review applications, draft decisions and release results.
+- Unreleased decisions are not exposed to applicants.
+- Release, correction and withdrawal workflows are audited.
+- A released decision can be corrected only through the implemented reasoned, second-Management-approval workflow.
+- The application form is configuration-driven and freezes once applications exist.
 
-```bash
-docker compose up -d
-```
+The 2026 registration cut-off is configured for **5 November 2026 at 23:59:59 IST**, but the organisers’ written confirmation remains a launch approval item. See TBD-11 in the [decision register](docs/DECISIONS.md).
 
-Make sure `DATABASE_URL` in `.env` points to the running database. The helper's default URL uses port `54329`; adjust it if you use a different PostgreSQL instance.
+### Admin, accounts and access control
 
-### 3. Apply migrations and seed development accounts
+- CSV import supports predefined startups, jury members, volunteers and delegates through validate → preview → commit.
+- Import validation reports errors by row and field and detects duplicates and shared contact numbers.
+- Imported accounts use single-use, time-limited activation codes; only code hashes are stored.
+- Admins can manage roles, deactivate accounts and reactivate accounts within permission boundaries.
+- Accounts must be active before protected roles and data are made available.
+- Staff MFA is required for privileged users in production.
+- Verified identity claims are checked against authoritative Supabase user records before account linking.
 
-```bash
-pnpm db:migrate
-pnpm db:seed
-```
+See the [security fix report](docs/SECURITY_FIX_2026-10-15.md) and [technical guide](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md).
 
-The development seed creates these local-only accounts:
+### AI-assisted startup ranking
 
-| Role | Development account |
-|---|---|
-| Management | `manager@dev.local` |
-| Admin (without Management permission) | `admin@dev.local` |
-| Customer Support | `support@dev.local` |
+- Management can create, version and approve ranking criteria.
+- The example criteria set is seeded as an **unapproved draft**; ranking cannot run until Management approves a set.
+- A ranking run covers an edition after that edition's registration closes.
+- Applicant contact details are excluded from ranking input, and contact information found inside answers is redacted.
+- Model output is validated and retried once; unusable results are flagged for manual review.
+- Weighted totals and rankings are computed outside the model.
+- Suspected attempts to steer the model are flagged.
+- The ranking worker uses a restricted database role that cannot write selection decisions or read personal contact data.
+- Management retains authority over selection and rejection; ranking is advisory only.
+- Overrides require a reason; changing a released outcome requires a second Management approver.
+- Result and activation messages use the existing outbox with per-message status.
 
-These are not production credentials. The seed script refuses to run when `NODE_ENV=production`.
+The Vertex AI adapter is implemented, but a real model has not been connected or evaluated. The development scorer is a test stub, **not an AI model**, and production is configured to reject it.
 
-### 4. Run the API, website and console
+Synthetic-data evaluation command:
 
-Open three terminals from the repository root:
+    pnpm --filter @sj/api ranking:eval
 
-```bash
-pnpm dev:api
-```
+### Jury evaluation and volunteer assignments
 
-```bash
-pnpm dev:web
-```
+- Management configures and approves versioned jury rubrics, assigns jurors, schedules pitches and tracks the currently pitching startup.
+- Jurors can access only their assigned startups and the authorised pitch information.
+- Scoring is validated server-side; submitted evaluations are locked and retain the rubric version used.
+- Management can review evaluations and reopen a submitted evaluation with a recorded reason.
+- Jury scores are kept separate from AI ranking and startup-selection decisions.
+- Volunteer assignment generation uses a reproducible random shuffle and one-to-one pairing.
+- A volunteer is assigned to exactly one target: one startup **or** one jury member, never both.
+- If capacity is insufficient, unassigned targets are listed rather than hidden by duplicate assignments.
+- Draft assignments are reviewed by Management before being saved.
+- Reassignments and assignment endings preserve actor, time, reason and history.
+- Database constraints and transactional locking protect the one-to-one rules under concurrent requests.
 
-```bash
-pnpm dev:console
-```
+The draft jury rubric and volunteer-related messaging/contact policies still require the approvals recorded in [DECISIONS.md](docs/DECISIONS.md).
 
-Optional, for the mobile app:
+### Event information, documents, notices and push
 
-```bash
-pnpm dev:mobile
-```
+- The website Programme page and mobile Event Information screen read the same published event content.
+- Supported event content includes schedules, venues, food, accommodation, travel, safety guidance, emergency contacts and information pages.
+- Edits remain drafts until published with a change summary; published versions are retained.
+- Content visibility can be public, for all participants, or limited to authorised roles.
+- Admin and Management edit different content categories, enforced by the API.
+- The initial programme is seeded as **unpublished tentative content**; no invented session times or venues are made public.
+- Emergency number **112** is always displayed first; organisers must supply venue-specific contacts.
+- Admin-uploaded documents support PDF, PNG and JPEG up to 10 MB. The intended production workflow uses a private Supabase Storage bucket and audience-checked links expiring after 60 seconds.
+- Management can send edition-scoped notices to all participants, roles, or authorised groups.
+- Notices appear in the app inbox and can optionally be sent by push. Corrections and withdrawals are audited.
+- Push-device registration, delivery tracking and receipt checks are implemented through the Expo push adapter.
 
-Default local URLs:
-
-- Website: <http://localhost:3000>
-- Console: <http://localhost:3001> (`manager@dev.local` and `manager2@dev.local` see Applications and AI ranking; `admin@dev.local` sees Accounts and Imports)
-- API: <http://localhost:4000>
-
-### 5. Run the mobile app on a phone (optional)
-
-1. Install **Expo Go** (Play Store / App Store) on a phone that is on the same Wi-Fi as your computer.
-2. Run `pnpm dev:mobile` and scan the QR code.
-3. In development the app calls the API on the computer that is running Expo, on port 4000. If Windows Firewall asks, allow Node.js on private networks. You can also set `EXPO_PUBLIC_API_URL=http://<computer-ip>:4000` yourself.
-4. To act as an imported participant, import them in the console under **Imports**, issue a code under **Accounts**, and enter that code in the app.
-
-Use the development accounts above to exercise the local workflow. Local development auth bypasses a real identity provider; never expose these services publicly.
-
-## Tests and builds
-
-```bash
-pnpm -r typecheck
-pnpm --filter @sj/api test
-pnpm -r build
-```
-
-API integration tests require PostgreSQL. The test harness uses `TEST_DATABASE_URL` if configured; see `docs/EXECUTION_PLAN.md` for the current test setup.
-
-For browser end-to-end verification, start the API, website and console, install Playwright and Chromium, then run:
-
-```bash
-python3 -m pip install playwright
-python3 -m playwright install chromium
-python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots   # website + Management
-python3 scripts/e2e_admin.py /tmp/startup-jathara-shots   # Admin import → activation
-python3 scripts/e2e_phone.py /tmp/startup-jathara-shots   # sign-in by mobile number
-python3 scripts/e2e_redirect.py                           # crafted ?next= links stay on-site
-# staff MFA: restart the API with REQUIRE_STAFF_MFA=true, then
-python3 scripts/e2e_mfa.py /tmp/startup-jathara-shots
-# mobile: serve the web build on :8081 and add http://localhost:8081 to CORS_ORIGINS, then
-pnpm --filter @sj/mobile export:web && python3 scripts/e2e_mobile.py /tmp/startup-jathara-shots
-# AI ranking (Phase 5) runs after the 2026 deadline, so use a fresh database, the synthetic cohort and a pinned clock:
-SEED_DEMO_APPLICATIONS=1 pnpm db:seed
-DEV_NOW=2026-11-06T10:00:00+05:30 RANKING_PROVIDER=stub NOTIFY_EMAIL_PROVIDER=log pnpm dev:api
-python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
-# Jury and volunteers (Phase 6): a freshly seeded database (it checks a volunteer shortage), the console and the mobile web build
-pnpm db:seed && pnpm dev:api
-python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
-# Event information and notices (Phase 7): also a freshly seeded database (it publishes the seeded programme), plus the website
-pnpm db:seed && pnpm dev:api
-python3 scripts/e2e_event_notices.py /tmp/startup-jathara-shots
-```
-
-Model evaluation on synthetic applications (no database, no real data). With the stub it checks the harness only:
-
-```bash
-RANKING_PROVIDER=vertex RANKING_VERTEX_PROJECT=<project> RANKING_VERTEX_MODEL=<model> pnpm --filter @sj/api ranking:eval
-```
-
-Background work (ranking runs, the email/SMS outbox) runs inside the API process by default (`RUN_WORKERS=true`). On hosts that throttle CPU between requests, run `pnpm --filter @sj/api start:worker` as its own service and set `RUN_WORKERS=false` on the API.
-
-CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) to install dependencies, typecheck, run API integration tests against PostgreSQL and build the workspaces.
-
-## Configuration
-
-Copy `.env.example` to `.env` and configure only the variables required by your environment. Important settings include:
-
-| Variable | Purpose |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `PORT` | API listening port (default `4000`) |
-| `AUTH_MODE` | `dev` locally; `supabase` only after real provider setup |
-| `DEV_AUTH_SECRET` | Local-only development signing secret; use a unique secret locally |
-| `SUPABASE_URL` | Supabase project URL for provider/JWKS verification |
-| `SUPABASE_SERVICE_ROLE_KEY` | **API only, server-side secret.** Reads the authoritative user record to confirm email/phone verification. Never a `NEXT_PUBLIC_*` or `EXPO_PUBLIC_*` value |
-| `ACTIVATION_TTL_HOURS` | Validity of activation codes (default 72, as recommended in TBD-13; awaiting organiser approval) |
-| `REQUIRE_STAFF_MFA` | Require MFA (aal2) for Admin, Management and Support. On by default in production and cannot be turned off there. Off locally unless set to `true` |
-| `LAUNCH_APPROVED` | Production start gate. Set to `true` only after `docs/LAUNCH_CHECKLIST.md` is signed off |
-| `RUN_WORKERS` | Run ranking and outbox workers inside the API process (default `true`) |
-| `RANKING_PROVIDER` | `stub` (development only, **not an AI**, refused in production) or `vertex` |
-| `RANKING_VERTEX_PROJECT`, `RANKING_VERTEX_LOCATION`, `RANKING_VERTEX_MODEL` | Vertex AI for ranking (location default `asia-south1`; the model is chosen by `ranking:eval`, TBD-35) |
-| `RANKING_VERTEX_SERVICE_ACCOUNT` | A service account used only for ranking, impersonated by the runtime identity (FR-RNK-12) |
-| `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox: `none` (messages stay queued), `log` (development only) or `smtp` (Amazon SES) |
-| `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION`, `MSG91_TEMPLATE_ASSIGNMENT` (volunteer assignments, TBD-48) | SMS outbox: `none`, `log` (development only) or `msg91` with DLT-registered template ids |
-| `PUBLIC_WEB_URL` | Website address used in result messages |
-| `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` | Push for notices: `none`, `log` (development only) or `expo` (TBD-52). The access token is a server-side secret |
-| `STORAGE_PROVIDER`, `STORAGE_BUCKET`, `FILE_LINK_SECRET` | Documents: `database` (development only, refused in production) or `supabase` (private bucket, default `event-documents`, TBD-51). `FILE_LINK_SECRET` signs the development store's 60-second links |
-| `DEV_NOW` | Development only: pins the API clock (refused in production and outside `AUTH_MODE=dev`) |
-| `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone`. Unset allows both (development). Deployed environments set `email` until the DLT-registered SMS sender is live, then `email,phone` (TBD-12) |
-| `CORS_ORIGINS` | Explicit allowlist of trusted web origins |
-| `NEXT_PUBLIC_API_URL` | API URL used by website and console |
-| `NEXT_PUBLIC_AUTH_MODE` | Client auth mode matching the target environment |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase URL for browser sign-in, when configured |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase publishable/anon key; never put a service-role key here |
-| `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_AUTH_MODE`, `EXPO_PUBLIC_SUPABASE_*` | Mobile app settings, inlined at build time (public values only) |
-
-Never commit `.env`, OTPs, tokens, Supabase service-role keys, cloud credentials or participant spreadsheets. Only `.env.example` belongs in source control.
-
-## Security and data handling
-
-- Keep this repository **private until stakeholders approve visibility**; it contains unfinished application code and operational planning information.
-- Do not use the unrelated personal Supabase project for this application. Create project-owned staging and production environments after ownership and budget approval.
-- Before production: verify OTP claims and account linking against real Supabase configuration (implemented and tested against Supabase-shaped data, not yet against a live project), approve the privacy notice, run security tests and review role/record-level access. The full list, with the items the API enforces, is in [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md).
-- Keep staging data synthetic. Do not copy production participant records to staging.
-- Application form fields, privacy/retention policy, sign-in identifier, deadline cutoff and deployment ownership are still decision items.
-- No production deployment or app-store release is implied by this repository snapshot.
-
-See [docs/EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) for P0 launch blockers and the acceptance checklist. Report security concerns privately to the repository owners; do not include secrets or personal data in issues.
+**Not verified live:** migration 0011 has not yet been applied to staging; the private document bucket has not been tested against a real Supabase Storage bucket; phone push notifications have not been tested on real Android and iOS devices with the organisation's credentials. Until those steps are done, do not treat these integrations as production-ready.
 
 ## Roadmap
 
-1. **M1 — Registration vertical slice:** website registration, API, PostgreSQL, Management decision workflow and applicant status.
-2. **M2 — Administration:** secure account activation, bulk imports, role management and initial reports.
-3. **M3 — AI ranking:** approved criteria, isolated ranking worker, explanations and human-controlled decisions.
-4. **M4 — Jury and volunteers:** jury scoring and random one-to-one volunteer assignment.
-5. **M5 — Event information:** schedules, documents, notices and push notifications.
-6. **M6 — Mobile:** Android/iOS app and role-specific screens.
-7. **M7 — Help Desk and support:** in-app/WhatsApp Help Desk, ticketing and emergency workflow.
-8. **M8 — Production readiness:** security review, load tests, backups/restore drill, monitoring and release.
+The delivery plan contains ten phases:
 
-The current 10-phase breakdown, with Phases 1–4 done, is in [`docs/PHASES.md`](docs/PHASES.md). Phase targets depend on stakeholder decisions, team capacity, vendor onboarding and app-store review. See the execution plan for current dependencies and schedule risks.
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Foundation: monorepo, contracts, API, database, identity, permissions, audit and CI | Done |
+| 2 | Registration and selection | Done |
+| 3 | Admin accounts, CSV imports and activation | Done |
+| 4 | Mobile app foundation | Done; store release pending |
+| 5 | AI ranking and Management-controlled selection | Done; real AI/email/SMS providers pending |
+| 6 | Jury evaluation and volunteer assignment | Done |
+| 7 | Event information, documents, notices and push support | Done; live storage/push verification pending |
+| 8 | In-app AI Help Desk, Customer Support dashboard, tickets and emergency workflow | Next |
+| 9 | Offline event-information cache, reports, controlled exports and audit view | Planned |
+| 10 | Security review, penetration-test fixes, load/recovery testing, app-store submission and launch | Planned |
+
+**WhatsApp integration is excluded from the current Phase 8 implementation scope and is assigned to a teammate.** The in-app Help Desk should be designed so the core authorised support logic can be reused later, but this repository workstream must not implement WhatsApp APIs, webhooks or credentials.
+
+The app's sign-out-after-reinstall behaviour (OD-02) is also still outstanding and must be completed before app-store submission.
+
+For exact deliverables, acceptance criteria, dependencies and open decisions, see [PHASES.md](docs/PHASES.md), [EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) and [DECISIONS.md](docs/DECISIONS.md).
+
+## Architecture
+
+The platform follows ADR-001: a TypeScript monorepo with a modular-monolith API and one PostgreSQL database. Web and mobile clients use the typed API client; they do not connect directly to database tables.
+
+    Public website ─────┐
+    Admin/Management ───┼── HTTPS / JSON ── Fastify API ── PostgreSQL
+    Android/iOS app ────┘                       │
+                                                ├── Background workers / outbox
+    Supabase Auth ── signed JWT ────────────────┤
+                                                ├── Private document storage
+                                                └── Provider adapters:
+                                                    Vertex AI, email, SMS, Expo push
+
+Core design rules:
+
+- **One API and one database.** Each interface uses the API and shared typed contracts.
+- **Contracts first.** Zod schemas in the contracts package define request/response types.
+- **Critical rules enforced in the database.** Constraints and triggers protect important invariants for every caller.
+- **Default deny.** Server-side permissions and record-level checks control access.
+- **Configuration over hard-coded policy.** Edition-specific settings store deadlines, forms and other changeable rules.
+- **AI never decides.** Human Management decisions remain separate from AI ranking and jury scoring.
+- **Audit privileged operations.** Decisions and operational changes keep traceable audit history.
+- **Production fails closed.** The launch gate rejects unsafe production configuration.
+
+### Technology stack
+
+| Layer | Technology |
+|---|---|
+| Language/runtime | TypeScript 5.9, Node.js 22+ |
+| Package manager | pnpm 10 workspaces |
+| API | Fastify 5, Zod, postgres.js |
+| Database | PostgreSQL 16+; Supabase PostgreSQL for staging |
+| Website and console | Next.js 16, React 19 |
+| Mobile | Expo SDK 57, React Native, Expo Router |
+| Authentication | Supabase Auth OTP and TOTP MFA for deployed environments; local development auth for local work only |
+| AI ranking | Vertex AI adapter plus a development-only scorer |
+| Notifications | Existing outbox with email, SMS and Expo push adapters |
+| Documents | Supabase Storage intended for deployed environments; database-backed development adapter |
+| Tests | Vitest, PostgreSQL integration tests and Python browser E2E scripts |
+| CI | GitHub Actions |
+
+Hosting choices are not a deployment confirmation. Production hosting, budget and organisational account ownership remain subject to approval.
+
+## Repository structure
+
+    apps/
+      api/          Fastify API, services, workers, migrations runner and tests
+      web/          Public website and applicant flows
+      console/      Admin and Management console; Support dashboard is planned
+      mobile/       Shared Android/iOS Expo app
+    packages/
+      contracts/    Shared schemas, types and validation
+      client/       Typed API client
+      web-session/  Browser session and authentication integration
+    db/
+      migrations/   Forward-only SQL migrations
+    docs/
+      ARCHITECTURE.md
+      PHASES.md
+      EXECUTION_PLAN.md
+      DECISIONS.md
+      LAUNCH_CHECKLIST.md
+      STAGING.md
+      TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md
+      DEVICE_TEST_PROTOCOL.md
+    scripts/        Local database and browser E2E helpers
+    .github/
+      workflows/    Continuous integration
+
+## Getting started locally
+
+### Prerequisites
+
+- Node.js 22 or newer.
+- pnpm 10.
+- PostgreSQL 16+ or Docker/Compose.
+- Python 3 for the browser E2E scripts.
+
+### Install dependencies
+
+    pnpm install
+    cp .env.example .env
+
+Review .env and keep local development settings local. Development authentication is for local testing only; never use it in a deployed environment.
+
+### Start a local database
+
+Use the repository's database helper:
+
+    pnpm db:start
+
+Or use Docker Compose if that is your preferred local setup:
+
+    docker compose up -d
+
+Check DATABASE_URL in .env and make sure it targets the database you started. The helper's default port may differ from an existing local PostgreSQL instance.
+
+### Apply migrations and seed development accounts
+
+    pnpm db:migrate
+    pnpm db:seed
+
+The development seed contains local-only sample accounts for Management, Admin and Customer Support. Consult the seed implementation for the exact credentials and roles. Do not use sample credentials in staging or production; the seed script is intended for development.
+
+### Start the services
+
+Run each command from the repository root in a separate terminal:
+
+    pnpm dev:api
+
+    pnpm dev:web
+
+    pnpm dev:console
+
+Optional mobile development server:
+
+    pnpm dev:mobile
+
+The default local service ports are:
+
+- Website: http://localhost:3000
+- Console: http://localhost:3001
+- API: http://localhost:4000
+
+For physical-device testing, configure the mobile app's API URL to a reachable address on the computer running the API. A phone cannot normally reach the computer through its own localhost address.
+
+## Testing and builds
+
+Run the workspace checks:
+
+    pnpm -r typecheck
+    pnpm --filter @sj/api test
+    pnpm -r build
+
+API integration tests require PostgreSQL. Review the test configuration and use a disposable test database; do not point tests at a production or participant-data database.
+
+Browser end-to-end scripts currently include the following flows. Start the required services and a fresh, correctly seeded database before each flow:
+
+    python3 scripts/e2e_smoke.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_admin.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_phone.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_redirect.py
+    python3 scripts/e2e_mfa.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_mobile.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_event_notices.py /tmp/startup-jathara-shots
+
+Browser scripts require Playwright and Chromium. Some flows use controlled test configuration, synthetic data or a pinned clock. Follow the comments in each script and the [technical execution plan](docs/EXECUTION_PLAN.md) before running them; do not run example commands against production.
+
+CI is configured in .github/workflows/ci.yml and runs the repository's automated checks. A green CI run is necessary, but it does not prove real-provider delivery, device behaviour, staging deployment or production readiness.
+
+## Environments and external services
+
+### Local development
+
+Local development may use the development authentication mode and development-only provider adapters. These are for tests and must never be used for real participant data or production operation.
+
+### Staging
+
+An organisation-owned Supabase staging project exists in the Mumbai region. However, the staging API, website and Management console are **not hosted yet**, and required secret/auth configuration remains outstanding.
+
+Before staging end-to-end verification can be completed:
+
+1. Configure staging secrets in the appropriate secret manager.
+2. Configure Supabase Auth OTP, custom SMTP and TOTP MFA settings.
+3. Host the API, website and console using staging configuration.
+4. Apply migration 0011 through the authorised staging process.
+5. Create the private event-documents Storage bucket and verify audience-restricted links.
+6. Verify authentication, device sessions, live email/SMS flows and other provider paths in the [device test protocol](docs/DEVICE_TEST_PROTOCOL.md).
+
+See [STAGING.md](docs/STAGING.md) for exact settings, migration checksums, safeguards and the staging verification command. Do not apply migrations to the shared staging project without its owner's authorisation.
+
+### External accounts and providers
+
+The following dependencies still need real accounts, configuration or approval:
+
+- **Supabase:** completed staging project; staging secrets, Auth settings and hosted clients still pending.
+- **Vertex AI:** no live ranking model has been selected and validated.
+- **Email:** Amazon SES sender/domain setup and real delivery verification.
+- **SMS:** MSG91 or an approved alternative, DLT registration and approved templates.
+- **Push:** organisation-owned Expo/EAS project, FCM credentials and APNs credentials; test on actual Android and iOS devices.
+- **Document storage:** private Supabase Storage bucket and live access-control verification.
+- **Hosting and app stores:** organiser-owned cloud, domain, Apple and Google accounts and approved budget.
+- **Legal and policy:** approved privacy notice, retention policy, data-processing review and the remaining organiser/Management sign-offs.
+
+## Configuration and secret handling
+
+Start from .env.example. The exact configuration is defined and validated in the API, website, console and mobile packages. Common settings include:
+
+| Variable or setting | Purpose |
+|---|---|
+| DATABASE_URL | PostgreSQL connection string |
+| AUTH_MODE | Local development mode or Supabase authentication |
+| SUPABASE_URL | Supabase project URL |
+| SUPABASE_SERVICE_ROLE_KEY | Server-only key used by the API to verify authoritative account data |
+| REQUIRE_STAFF_MFA | Enforces step-up MFA for privileged staff |
+| CORS_ORIGINS | Explicit allowlist of trusted web origins |
+| LAUNCH_APPROVED | Human-controlled production approval gate |
+| RUN_WORKERS | Runs background workers within the API process |
+| RANKING_PROVIDER | Development scorer or Vertex AI provider |
+| NOTIFY_EMAIL_PROVIDER / NOTIFY_SMS_PROVIDER | Email and SMS delivery adapters |
+| PUSH_PROVIDER | Push notification adapter |
+| STORAGE_PROVIDER / STORAGE_BUCKET | Document storage backend and bucket |
+| NEXT_PUBLIC_API_URL / EXPO_PUBLIC_API_URL | Public API URL for web and mobile clients |
+| NEXT_PUBLIC_SUPABASE_* / EXPO_PUBLIC_SUPABASE_* | Public Supabase client settings only |
+
+This is a summary, not a complete environment-variable list. See .env.example and the configuration section in [TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) for the canonical list.
+
+**Never commit** .env files, service-role keys, API tokens, OTPs, provider credentials, private keys or real participant data. Never put server secrets in NEXT_PUBLIC_* or EXPO_PUBLIC_* variables.
+
+## Security and production readiness
+
+Production is **NOT APPROVED**. The API's launch checks validate important configuration conditions, but automated configuration checks cannot replace operational proof and written approvals.
+
+Before launch, the team must complete the current launch checklist, including:
+
+- Organisation-owned production infrastructure and restricted secret access.
+- Real Supabase sign-in, identity-linking and staff MFA verification.
+- Real email/SMS delivery and selected AI-model evaluation.
+- Private document-storage and real-device push testing.
+- Organiser and Management decisions, including event content and operational policies.
+- Legal approval of privacy and retention documents and relevant vendor processing.
+- Security review/penetration test, load test, monitoring, backup and restore drill.
+- Browser E2E and mobile-device verification on staging.
+- OD-02: sign out on first launch after app reinstall, before app-store submission.
+- Written launch sign-offs before setting LAUNCH_APPROVED=true.
+
+The API should remain blocked until these requirements are satisfied. Do not bypass the launch gate to demonstrate the system.
+
+> [!WARNING]
+> The launch checklist states that this repository should be **private until launch approval**. Verify and change the repository visibility setting before sharing source or operational documentation broadly.
 
 ## Documentation
 
-- [Technical design and feature guide](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) — how the platform is built and what every feature does; updated with every change.
-- [Architecture (ADR-001)](docs/ARCHITECTURE.md) — the locked architecture.
-- [Delivery phases](docs/PHASES.md) — the 10 phases and their status.
-- [Technical Execution Plan](docs/EXECUTION_PLAN.md) — stack, data model, APIs, security practices, milestones and backlog.
-- [Decision register](docs/DECISIONS.md) — the recommended decision for every TBD, its rationale and who must approve it.
-- [Privacy notice draft](docs/PRIVACY_NOTICE_DRAFT.md) — for legal review (TBD-32); not approved.
-- [Security fix report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, account linking and activation enforcement, reconciled to the current state (§8).
-- [Device test protocol](docs/DEVICE_TEST_PROTOCOL.md) — real-phone checks for sessions, refresh, sign-out and MFA (with `pnpm --filter @sj/api staging:verify` for the live Supabase server side).
-- [Launch checklist](docs/LAUNCH_CHECKLIST.md) — what must be signed off before production; the API refuses to start in production until then.
-- **Product requirements:** `Startup_Jathara_PRD_v1.0` is the source-of-truth requirements baseline and is maintained separately from this initial code archive.
+- [Technical Design and Feature Guide](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) — detailed guide to the built system, APIs, permissions, tests and current limitations.
+- [Architecture / ADR-001](docs/ARCHITECTURE.md) — agreed architecture and module boundaries.
+- [Delivery Phases](docs/PHASES.md) — phase scope, implementation status and next steps.
+- [Technical Execution Plan](docs/EXECUTION_PLAN.md) — implementation plan, dependencies, acceptance criteria and schedule risks.
+- [Decision Register](docs/DECISIONS.md) — open TBDs, recommended defaults and required approvers.
+- [Staging Environment](docs/STAGING.md) — staging setup, database state, migrations and verification.
+- [Launch Checklist](docs/LAUNCH_CHECKLIST.md) — required technical and operational sign-offs.
+- [Device Test Protocol](docs/DEVICE_TEST_PROTOCOL.md) — real-phone authentication, session, MFA, push and event-information tests.
+- [Security Fix Report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, imported-account linking and activation safeguards.
+- [Privacy Notice Draft](docs/PRIVACY_NOTICE_DRAFT.md) — draft for legal review; not approved.
 
-## Publishing this repository to GitHub
+The requirements document and PRD are maintained as project documents. A decision listed as a recommended default is **not approved policy** until the named stakeholder signs it off.
 
-Recommended initial visibility: **Private**. The repository creation and initial push helper is available at [`scripts/publish-to-github.sh`](scripts/publish-to-github.sh). Requirements: Git, GitHub CLI (`gh`) and an authenticated GitHub CLI session (`gh auth login`). Review the files and ensure no secrets or real participant data are present before pushing.
+## License and use
 
-## License
-
-No open-source licence has been selected. All rights and usage permissions remain subject to the rights holder's decision; do not assume this code is licensed for redistribution or commercial reuse.
+No open-source licence has been selected. Unless and until the rights holder publishes a licence, do not assume the repository is licensed for redistribution, reuse or commercial deployment.
