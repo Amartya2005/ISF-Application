@@ -16,6 +16,8 @@ export function Nav() {
       {can(me, "notice.publish") && <Link href="/notices">Notices</Link>}
       {can(me, "user.read") && <Link href="/users">Accounts</Link>}
       {can(me, "import.manage") && <Link href="/imports">Imports</Link>}
+      {can(me, "report.export") && <Link href="/reports">Reports</Link>}
+      {can(me, "audit.read") && <Link href="/audit">Audit</Link>}
       {me?.mfaRequired && <Link href="/mfa">Verify MFA</Link>}
       <Account />
     </nav>

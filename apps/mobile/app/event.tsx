@@ -6,10 +6,13 @@ import { Linking, Pressable, Text, View } from "react-native";
 import { formatIst } from "@sj/client";
 import type { EventInfo } from "@sj/contracts";
 import { Badge, Button, Card, H1, H2, Loading, Notice, P, Screen, colors } from "../components/ui";
+import { decodeEventCache, encodeEventCache, isStale } from "../lib/offline-cache";
 import { messageOf, useSession } from "../lib/session";
+import { largeCache } from "../lib/storage";
 
 const MEAL = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snacks: "Snacks", other: "Food" } as const;
 const time = (b: { startTime?: string | null; endTime?: string | null }) => (b.startTime ? `${b.startTime}${b.endTime ? `–${b.endTime}` : ""}` : "Time to be announced");
+const cacheKey = (year: number) => `sj.offline.event.${year}`;
 
 export default function EventScreen() {
   const { api } = useSession();
@@ -17,7 +20,32 @@ export default function EventScreen() {
   const [e, setE] = useState<EventInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
-  useFocusEffect(useCallback(() => { setError(null); api.event(year).then(setE, (x) => setError(messageOf(x))); }, [api, year]));
+  // Offline cache (FR-25): a successful fetch refreshes it; a failed one falls back to the last cached copy and
+  // says so plainly, rather than passing stale data off as live. No offline queue for transactions (FR-26): there
+  // is no QR check-in module for 2026 (TBD-30), so nothing here is ever written offline.
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  useFocusEffect(useCallback(() => {
+    let live = true;
+    setError(null);
+    api.event(year).then(
+      (info) => {
+        if (!live) return;
+        setE(info); setCachedAt(null);
+        void largeCache.set(cacheKey(year), encodeEventCache(info, new Date().toISOString())).catch(() => {});
+      },
+      (x) => {
+        void largeCache.get(cacheKey(year)).then(
+          (raw) => {
+            if (!live) return;
+            const cached = decodeEventCache(raw);
+            if (cached) { setE(cached.info); setCachedAt(cached.cachedAt); setError(null); } else setError(messageOf(x));
+          },
+          () => { if (live) setError(messageOf(x)); },
+        );
+      },
+    );
+    return () => { live = false; };
+  }, [api, year]));
 
   if (error) return <Screen><Notice kind="error">{error}</Notice></Screen>;
   if (!e) return <Screen><Loading /></Screen>;
@@ -31,6 +59,11 @@ export default function EventScreen() {
     <Screen>
       <H1>{e.edition.name}</H1>
       <P muted small>The programme is tentative and may change.{e.lastUpdated ? ` Last updated ${formatIst(e.lastUpdated)} IST.` : ""}</P>
+      {cachedAt && (
+        <Notice kind={isStale(cachedAt) ? "warn" : "ok"}>
+          You&rsquo;re offline. Showing a saved copy from {formatIst(cachedAt)} IST{isStale(cachedAt) ? " — this may be out of date." : "."}
+        </Notice>
+      )}
 
       <Card>
         <H2>Emergency</H2>

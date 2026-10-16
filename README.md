@@ -1,7 +1,7 @@
 # Startup Jathara Management Platform
 
 **Built by Zeny2Labs for the International Startup Foundation (ISF) and GIET University**  
-**Current delivery:** Phases 1–7 of 10 implemented  
+**Current delivery:** Phases 1–9 of 10 implemented; Phase 10's hardening artifacts (load test, restore drill, security self-review, sign-out on reinstall) are prepared, not fully executed  
 **Production status:** **NOT APPROVED**  
 **Latest reported repository commit:** `3cc51fe`
 
@@ -29,20 +29,16 @@ This repository contains a working, tested application codebase for registration
 | Real AI ranking model | Not connected or evaluated against a live provider |
 | In-app AI Help Desk, support tickets, Customer Support dashboard and emergency control | Implemented; real Help Desk model not connected; emergency numbers, windows and roster await organisers |
 | WhatsApp Help Desk channel | Separate workstream (not in this repository's Phase 8) |
-| Phase 9 offline mode, reports and audit view | Planned |
-| Phase 10 security review, performance/recovery tests and launch | Planned |
+| Reports and controlled exports, admin audit log viewer, mobile offline event-info cache | Implemented (Phase 9) |
+| Data-retention purge | Implemented for 3 of 7 categories (Phase 9); the rest conflict with the append-only support-ticket design or need their own design pass — see [docs/DECISIONS.md](docs/DECISIONS.md) TBD-59 |
+| Sign-out after app reinstall (OD-02) | Implemented (Phase 10); not yet verified on a real device |
+| Load test, restore drill, independent security review, store submission, production release | Load-test script and restore-drill runbook **prepared, not executed against real infrastructure**; a security self-review exists but is not the required independent review; store submission and production release remain blocked on organisation-owned accounts and every other outstanding launch-checklist item (Phase 10) |
 
 ### Latest reported verification
 
-The Phase 7 delivery reports the following checks passing on **16 October 2026**:
+See [docs/PHASES.md](docs/PHASES.md)'s Phase 9 and Phase 10 "what was built" sections for this delivery's exact test counts and what each check covers, and [docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md](docs/TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md) §9 for the full verification table. In summary: the API and mobile test suites, typecheck, frozen-lockfile install, production builds, the mobile web export, and eleven browser end-to-end flows all pass.
 
-- **384 API tests**.
-- **8 mobile tests**.
-- **9 browser end-to-end flows**, run against fresh databases.
-- Type checks and production builds.
-- GitHub Actions passed for the Phase 7 delivery.
-
-These are the reported results for the checked code and test environments. They do **not** prove live email/SMS delivery, real AI quality, real-device push delivery, production deployment, or store approval. Re-run checks in your own environment before relying on them.
+These are the reported results for the checked code and test environments. They do **not** prove live email/SMS delivery, real AI quality, real-device push delivery, a real load test against real infrastructure, a real restore drill, an independent security review, production deployment, or store approval. Re-run checks in your own environment before relying on them.
 
 ## Interfaces
 
@@ -224,7 +220,9 @@ Hosting choices are not a deployment confirmation. Production hosting, budget an
       STAGING.md
       TECHNICAL_DESIGN_AND_FEATURE_GUIDE.md
       DEVICE_TEST_PROTOCOL.md
-    scripts/        Local database and browser E2E helpers
+      SECURITY_SELF_REVIEW.md
+      RESTORE_DRILL.md
+    scripts/        Local database, browser E2E and load-test helpers
     .github/
       workflows/    Continuous integration
 
@@ -307,10 +305,19 @@ Browser end-to-end scripts currently include the following flows. Start the requ
     python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
     python3 scripts/e2e_event_notices.py /tmp/startup-jathara-shots
     python3 scripts/e2e_support.py /tmp/startup-jathara-shots          # API with HELPDESK_PROVIDER=stub
+    python3 scripts/e2e_reports_audit.py                               # Phase 9: reports, exports and the admin audit view
 
 Browser scripts require Playwright and Chromium. Some flows use controlled test configuration, synthetic data or a pinned clock. Follow the comments in each script and the [technical execution plan](docs/EXECUTION_PLAN.md) before running them; do not run example commands against production.
 
 CI is configured in .github/workflows/ci.yml and runs the repository's automated checks. A green CI run is necessary, but it does not prove real-provider delivery, device behaviour, staging deployment or production readiness.
+
+### Load test and restore drill (Phase 10, not yet run against real infrastructure)
+
+`scripts/load_test.js` is a [k6](https://k6.io/docs/get-started/installation/) script for the TBD-33 registration-close and event-morning journeys. It is **prepared, not executed against real infrastructure** — see the script's own header comment and [docs/DECISIONS.md](docs/DECISIONS.md) TBD-33 for what running it for real still needs (an ISF-owned, TBD-33-sized environment and pre-minted staging tokens). It can be run as a local mechanical smoke test against the dev stack (never against staging or production, since this uses `AUTH_MODE=dev`):
+
+    BASE_URL=http://localhost:4000 DEV_AUTH=true VUS=10 DURATION=15s RAMP=5s k6 run scripts/load_test.js
+
+[docs/RESTORE_DRILL.md](docs/RESTORE_DRILL.md) is the step-by-step runbook for the AT-36 restore drill. It has not been executed; it needs point-in-time recovery turned on for a real Supabase project, pending budget approval (TBD-33, TBD-46).
 
 ## Environments and external services
 
@@ -404,6 +411,8 @@ The API should remain blocked until these requirements are satisfied. Do not byp
 - [Launch Checklist](docs/LAUNCH_CHECKLIST.md) — required technical and operational sign-offs.
 - [Device Test Protocol](docs/DEVICE_TEST_PROTOCOL.md) — real-phone authentication, session, MFA, push and event-information tests.
 - [Security Fix Report](docs/SECURITY_FIX_2026-10-15.md) — identity verification, imported-account linking and activation safeguards.
+- [Security Self-Review](docs/SECURITY_SELF_REVIEW.md) — internal checklist of what already has test-backed coverage; not a substitute for the required independent review.
+- [Restore Drill Runbook](docs/RESTORE_DRILL.md) — step-by-step point-in-time-recovery procedure for AT-36; prepared, not yet executed.
 - [Privacy Notice Draft](docs/PRIVACY_NOTICE_DRAFT.md) — draft for legal review; not approved.
 
 The requirements document and PRD are maintained as project documents. A decision listed as a recommended default is **not approved policy** until the named stakeholder signs it off.

@@ -7,6 +7,7 @@ import type { Sql } from "./db/client.js";
 import { checkPushReceipts, dispatchOutbox, expoPushSender, logSender, msg91Sender, smtpSender, type ExpoPushOptions, type MessageSender } from "./modules/notifications/outbox.js";
 import { stubModel, vertexModel, type RankingModel } from "./modules/ranking/model.js";
 import { processNextRankingRun } from "./modules/ranking/worker.js";
+import { sweepRetention } from "./modules/retention/purge.js";
 import { sweepSupport } from "./modules/support/sweep.js";
 
 export function rankingModelFrom(config: Config): RankingModel {
@@ -45,10 +46,13 @@ export function startWorkers(o: {
   intervalMs?: number;
   /** Set when push goes through Expo: receipts are checked about once a minute. */
   pushReceipts?: ExpoPushOptions;
+  /** Phase 9 data-retention sweep (TBD-32); off unless explicitly enabled. Checked about once an hour. */
+  retention?: { enabled: boolean; dryRun: boolean };
 }): () => Promise<void> {
   let stopped = false;
   let busy: Promise<void> | null = null;
   let lastReceipts = 0;
+  let lastRetention = 0;
   void rankingRoleUsable(o.sql).then((ok) => {
     if (!ok) o.log.error({}, "ranking worker cannot SET ROLE sj_ranking_worker: ranking runs will stay queued. Run the migrations (0009) as the API's database user.");
   });
@@ -67,6 +71,11 @@ export function startWorkers(o: {
         lastReceipts = Date.now();
         const rc = await checkPushReceipts(o.sql, o.pushReceipts, o.clock());
         if (rc.checked) o.log.info(`push receipts: ${rc.checked} checked, ${rc.failed} failed`);
+      }
+      if (!stopped && o.retention?.enabled && Date.now() - lastRetention > 3600_000) {
+        lastRetention = Date.now();
+        const results = await sweepRetention(o.sql, o.retention, o.clock());
+        for (const s of results) if (s.deletedCount) o.log.info(`retention ${s.dryRun ? "dry run" : "purge"}: ${s.category} ${s.deletedCount}`);
       }
     } catch (err) {
       o.log.error({ err }, "background worker tick failed");

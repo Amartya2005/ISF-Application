@@ -1272,3 +1272,44 @@ export type HelpDeskReply = z.infer<typeof HelpDeskReply>;
 export const HelpDeskConversation = z.object({ conversationId: z.string().nullable(), messages: z.array(HelpDeskMessage) });
 export type HelpDeskConversation = z.infer<typeof HelpDeskConversation>;
 export const HelpDeskEscalate = z.object({ note: z.string().trim().max(1000).optional() });
+
+// ================================================================ Phase 9: reports, exports and audit review
+// (FR-RPT-*, FR-AUD-*; TBD-31, TBD-59). Offline caching (FR-OFF-*) is a mobile-only concern (apps/mobile/lib/
+// offline-cache.ts) and has no server contract: it caches the existing EventInfo response as-is.
+export const REPORT_KINDS = ["accounts", "imports", "volunteers", "applications", "selection", "jury"] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+/** Who may export which report (TBD-31): export is a permission separate from viewing, and each role exports only
+ *  the data it administers or reviews. */
+export const REPORT_OWNER: Record<ReportKind, "admin" | "management"> = {
+  accounts: "admin", imports: "admin", volunteers: "admin",
+  applications: "management", selection: "management", jury: "management",
+};
+export const REPORT_LABEL: Record<ReportKind, string> = {
+  accounts: "Accounts and roles", imports: "Import batches", volunteers: "Volunteer assignments",
+  applications: "Applications", selection: "Selection decisions", jury: "Jury evaluations",
+};
+/** Whether the report's URL takes a `:year` (edition-scoped) or spans every edition. */
+export const REPORT_PER_EDITION: Record<ReportKind, boolean> = {
+  accounts: false, imports: false, volunteers: true, applications: true, selection: true, jury: true,
+};
+
+export const AuditEventView = z.object({
+  id: z.string(), at: z.string(), actorType: z.enum(["user", "service", "system"]),
+  actorUserId: z.string().nullable(), actorName: z.string().nullable(),
+  action: z.string(), entityType: z.string(), entityId: z.string().nullable(), editionId: z.number().nullable(),
+  data: z.record(z.string(), z.unknown()),
+});
+export type AuditEventView = z.infer<typeof AuditEventView>;
+export const AuditPage = z.object({ events: z.array(AuditEventView), total: z.number().int(), limit: z.number().int(), offset: z.number().int() });
+export type AuditPage = z.infer<typeof AuditPage>;
+
+/** Purge categories actually built in Phase 9 (TBD-32); see DECISIONS.md TBD-59 for what is deferred and why. */
+export const RETENTION_CATEGORIES = ["import_rows", "activation_tokens", "helpdesk_transcripts", "support_tickets"] as const;
+export type RetentionCategoryName = (typeof RETENTION_CATEGORIES)[number];
+export const RetentionSweepView = z.object({
+  id: z.string(), category: z.string(), ranAt: z.string(), dryRun: z.boolean(), deletedCount: z.number().int(),
+  detail: z.record(z.string(), z.unknown()),
+});
+export type RetentionSweepView = z.infer<typeof RetentionSweepView>;
+export const RetentionStatus = z.object({ enabled: z.boolean(), dryRun: z.boolean(), recentSweeps: z.array(RetentionSweepView) });
+export type RetentionStatus = z.infer<typeof RetentionStatus>;

@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | **Product** | Startup Jathara event platform for International Startup Foundation (ISF), built by Zeny2Labs |
-| **Covers** | Everything built up to and including **Phase 8** (commit `a18d52a`, 16 Oct 2026) |
+| **Covers** | Everything built up to and including **Phase 9, and Phase 10's prepared (not executed) hardening artifacts** (16 Oct 2026) |
 | **Production status** | **NOT APPROVED.** Nothing is deployed to production. The API refuses a production start until [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. |
 | **Sources of truth** | The requirements document (`Startup_Jathara_Requirements_Revised_v4`) and the PRD (`ISF_Event_Operations_Platform_PRD_v0.1`). Every open point has a recorded decision in [DECISIONS.md](DECISIONS.md). |
-| **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
+| **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [SECURITY_SELF_REVIEW.md](SECURITY_SELF_REVIEW.md) · [RESTORE_DRILL.md](RESTORE_DRILL.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
 
 This guide explains **how the platform is built and what each feature does**, in one place. It describes the code as it is, not as planned. Planned work is listed only in [§12](#12-not-built-yet).
 
@@ -46,6 +46,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
 | 16 Oct 2026 | `f29884a`, `93ba3c0` | Phase 7: event information, documents, notices and push notifications (`93ba3c0`: a test made independent of database collation) | 1.1 |
 | 16 Oct 2026 | `a18d52a` | Phase 8: AI Help Desk in the app, support tickets and Customer Support dashboard, emergency control, re-alerts and escalation. WhatsApp excluded (separate workstream) | 1.2 |
+| 16 Oct 2026 | *(this delivery)* | Phase 9: reports and controlled exports, admin audit viewer, data-retention purge (3 of 7 categories), mobile offline event-info cache. Phase 10: sign-out on reinstall (OD-02); load-test script and restore-drill runbook prepared, not executed against real infrastructure; a security self-review (not the required independent pen test) | 1.3 |
 
 ---
 
@@ -166,15 +167,15 @@ Default deny: each route names one permission (`requirePermission`), and partici
 | Role | Permissions |
 |---|---|
 | Any signed-in user | `registration.submit`, `application.read_own`, `application.withdraw_own`, `notification.read_own`, `push.register_own`, `helpdesk.use`, `support.request_own`, `emergency.report` |
-| `admin` | `import.manage`, `user.read`, `user.manage`, `role.assign`, `activation.issue`, `volunteer.read`, `volunteer.generate`, `content.read_all`, `content.manage_source` |
-| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign`, `content.read_all`, `content.manage_operational`, `notice.publish`, `support.review` (read-only), `support.alerts`, `support.configure` |
+| `admin` | `import.manage`, `user.read`, `user.manage`, `role.assign`, `activation.issue`, `volunteer.read`, `volunteer.generate`, `content.read_all`, `content.manage_source`, `report.export`, `audit.read` |
+| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign`, `content.read_all`, `content.manage_operational`, `notice.publish`, `support.review` (read-only), `support.alerts`, `support.configure`, `report.export` |
 | `startup_team_leader` | `volunteer.my_volunteer` |
 | `jury_member` | `jury.evaluate`, `volunteer.my_volunteer` |
 | `volunteer` | `volunteer.my_assignment` |
 | `customer_support` | `support.handle`, `support.alerts` |
 | `startup_team_member`, `delegate` | no role-specific permissions. They use the event information, notices, Help Desk and support their edition access and audiences allow |
 
-The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Event information is split by type (TBD-24): `content.manage_source` covers documents, emergency contacts, safety guidelines and pages; `content.manage_operational` covers the schedule, venues, food, accommodation and travel. The service checks the type on every write. The Admin has no support permissions. `emergency.report` is deliberately not gated on a role or edition access (TBD-55). Source: `apps/api/src/platform/permissions.ts`.
+The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Event information is split by type (TBD-24): `content.manage_source` covers documents, emergency contacts, safety guidelines and pages; `content.manage_operational` covers the schedule, venues, food, accommodation and travel. The service checks the type on every write. The Admin has no support permissions. `emergency.report` is deliberately not gated on a role or edition access (TBD-55). `report.export` is held by both Admin and Management, but which reports each may actually export is drawn by **role identity**, not the permission (TBD-31, `REPORT_OWNER` in `apps/api/src/modules/reports/service.ts`) — necessary because the resource permissions themselves (`volunteer.read`, `application.read_all`) are also shared between the two roles for unrelated reasons. `audit.read` is Admin-only (TBD-58): Management is not exempted even for its own actions. Source: `apps/api/src/platform/permissions.ts`.
 
 ### 4.4 Audit
 
@@ -230,6 +231,7 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 | Audit | `audit_events` | Append-only (DC-13) |
 | Help Desk | `helpdesk_conversations`, `helpdesk_messages` | One conversation per person, channel and edition; app conversations need an account; messages append-only (deleted only by retention) |
 | Support | `support_tickets`, `ticket_events`, `support_alerts`; `event_editions.support_policy` | Four statuses only (DC-08); lifecycle, final resolution, priority/emergency only raised, escalation never withdrawn, staff-only acknowledgement and assignment (trigger); history and alerts append-only; one alert per recipient, reason and round; policy checked |
+| Reports and retention | `retention_sweeps` | One row per purge-sweep run, per category (category, ran at, dry-run flag, deleted count, detail); reports and exports read existing tables directly and add no schema of their own |
 
 ### 5.2 Migrations
 
@@ -249,6 +251,7 @@ Migrations are **forward-only and checksummed**: `migrate.ts` refuses to run if 
 | `0010_jury_volunteers.sql` | Jury and volunteer rules, rubric v1 draft, history | ✅ (15 Oct 2026) |
 | `0011_event_content_notices.sql` | Event information drafts and versions, documents, groups, notice rules, push devices and delivery, tentative 2026 programme (drafts) | ❌ not yet (applied with the staging deployment) |
 | `0012_helpdesk_support.sql` | Support policy per edition, Help Desk conversations and messages, ticket model and lifecycle trigger, append-only history, support alerts | ❌ not yet (staging changes need authorisation) |
+| `0013_reports_retention.sql` | `retention_sweeps` log table, two `audit_events` indexes for the audit viewer's filters | ❌ not yet (staging changes need authorisation) |
 
 How to apply to staging is in [STAGING.md](STAGING.md).
 
@@ -429,6 +432,45 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 - **Console:** Support page (queue, alert banner with 15-second polling, raise for a caller, windows for Management) and ticket page. **App:** My requests.
 - **Tests:** `support.test.ts` (26, including concurrent acknowledgement, concurrent sweeps and the acknowledge-versus-sweep race); browser: `e2e_support.py`.
 
+### 6.17 Reports and controlled exports (Phase 9)
+
+- **Status:** built. Awaiting Organisers (TBD-31).
+- **Boundary** (FR-RPT-*, TBD-31): export is a permission separate from viewing. **Admin** exports accounts/roles, import batches, volunteer assignments; **Management** exports applications, selection decisions, jury evaluations. Each export checks `report.export`, the resource's own view permission (defence in depth), and a role-identity check (`REPORT_OWNER`) — the last one is load-bearing, not redundant, because the view permissions themselves are shared between the two roles for unrelated reasons (§4.3).
+- **Every export is audited** (`report.exported`, with a row count only, never the row data) and built with `platform/csv-export.ts` (formula-injection escaping, same as imports).
+- **Console:** Reports page, filtered to the reports the signed-in role may export, with a year selector for edition-scoped reports and a download button per report.
+- **Tests:** `reports.test.ts` (8, including the Admin/Management cross-boundary refusal); browser: `e2e_reports_audit.py`.
+
+### 6.18 Admin audit log viewer (Phase 9)
+
+- **Status:** built. See TBD-58 for why it is Admin-only.
+- **Read-only** (FR-AUD-*, AT-16): filters by actor, action, entity type, edition and time range, paginated; `audit_events` stays append-only (DC-13) regardless — this view cannot change or delete anything.
+- **Scope:** Admin-only, by role identity, not by permission sharing — Management's broad read-all permissions do not extend here, including over Management's own recorded actions (TBD-58).
+- **Console:** Audit page (filters, paginated table) plus a retention-sweep status panel (§6.19).
+- **Tests:** `audit.test.ts` (6); browser: `e2e_reports_audit.py`.
+
+### 6.19 Data-retention purge (Phase 9)
+
+- **Status:** built for 3 of TBD-32's 7 categories; off by default (`RETENTION_PURGE_ENABLED=false`) pending Legal approval. See TBD-59 for the other 4 and why they are not built.
+- **Built:** raw import rows (30 days after commit), activation token hashes (90 days after use/expiry/revocation), Help Desk transcripts with no linked support ticket (90 days after the last message). A background-worker sweep (hourly) writes one `retention_sweeps` row and one audit event (`retention.purged` or `retention.dry_run`) per category per run.
+- **Not built:** support/emergency tickets (their tables are deliberately append-only by database trigger since Phase 8 — a direct conflict with TBD-32's literal deletion target, recorded as TBD-59, not worked around); application/decision/jury/account anonymisation (needs its own design pass against live foreign keys).
+- **Console:** the Audit page's retention-sweep panel shows enabled/dry-run state and recent sweep rows.
+- **Tests:** `retention.test.ts` (7).
+
+### 6.20 Mobile offline cache for event information (Phase 9)
+
+- **Status:** built (FR-OFF-*, within the narrower scope PHASES.md states for this phase — see its "what was built" section for what is explicitly out of scope).
+- **What it does:** the app's event screen caches the last successfully fetched event info on the device (`apps/mobile/lib/storage.ts`'s `largeCache`) and falls back to the cached copy, with a "last updated" staleness banner after 24 hours, when the network call fails.
+- **Design:** pure encode/decode functions (`apps/mobile/lib/offline-cache.ts`) that never throw on corrupt or malformed cached data — a damaged cache is treated as absent, not a crash.
+- **Tests:** `offline-cache.test.ts` (4: round-trip, corrupt data, staleness boundary, unparseable timestamp).
+
+### 6.21 Sign-out after app reinstall (Phase 10, OD-02)
+
+- **Status:** built; **not yet verified on a real device** (device protocol D8).
+- **Problem:** on iOS, the Keychain (where the session lives, §4.1) survives an app uninstall by default, so a reinstall could silently resume a previous owner's session on a device that changed hands.
+- **Fix:** a marker file in the app's sandboxed document directory (`apps/mobile/lib/reinstall-guard.ts`), which the OS deletes along with the app on uninstall on **both** platforms (unlike the keychain/keystore) — so the same check gives the same behaviour on Android and iOS. Checked once at app start-up, before any stored session is trusted; if the marker is missing, the session is cleared and the marker is (re-)written.
+- **Fails open on a filesystem error:** this is a UX safeguard, not the security boundary (the server authorises every request regardless), so a filesystem error here never blocks sign-in or forces an unwanted sign-out.
+- **Tests:** `reinstall-guard.test.ts` (4, with a fake marker file — no RN/Expo import needed, matching `offline-cache.ts`'s testable-core convention); device protocol D8 (not yet run on real hardware).
+
 ---
 
 ## 7. API reference
@@ -557,13 +599,22 @@ All routes are under `/v1`, JSON, with a Bearer token unless marked public. Guar
 | GET / POST | `/v1/support/alerts`, `/v1/support/alerts/:id/seen` | `support.alerts` (own alerts only) |
 | PUT | `/v1/manage/editions/:year/support-policy` | `support.configure` |
 
+### Reports, audit and retention (Phase 9)
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/v1/admin/reports/accounts.csv`, `/v1/admin/reports/imports.csv`, `/v1/admin/editions/:year/reports/volunteers.csv` | `report.export` + Admin ownership (TBD-31) |
+| GET | `/v1/manage/editions/:year/reports/applications.csv`, `/selection.csv`, `/jury.csv` | `report.export` + Management ownership (TBD-31) |
+| GET | `/v1/admin/audit` | `audit.read` (Admin-only, TBD-58) |
+| GET | `/v1/admin/retention` | `audit.read` (recent sweep status) |
+
 Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `packages/client/src/index.ts`.
 
 ---
 
 ## 8. Background workers
 
-- Four jobs: **AI ranking runs**, the **email/SMS/push outbox**, (with `PUSH_PROVIDER=expo`) an **Expo receipt check** about once a minute, and the **support sweep** (re-alerts, automatic escalation, overdue flags; one row lock per ticket). The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
+- Five jobs: **AI ranking runs**, the **email/SMS/push outbox**, (with `PUSH_PROVIDER=expo`) an **Expo receipt check** about once a minute, the **support sweep** (re-alerts, automatic escalation, overdue flags; one row lock per ticket), and the **retention sweep** (hourly; off by default, `RETENTION_PURGE_ENABLED=false`, pending Legal approval of TBD-32). The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
 - They run inside the API process (`RUN_WORKERS=true`) or as a separate process (`pnpm --filter @sj/api start:worker`) for hosts that throttle CPU between requests.
 - At start-up the workers check that the database user can switch to `sj_ranking_worker` and log an error if not (the problem migration 0009 fixed on staging).
 
@@ -578,14 +629,18 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 | Browser end-to-end | Playwright (Python) against the real API, website, console and the app's web build | `scripts/e2e_*.py` |
 | Real devices | Session, refresh, sign-out, MFA, push and event-information checks on Android and iOS (D1–D14) | [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run against live staging) |
 | Staging server side | OTP sessions, refresh, revocation, linking refusal, TOTP | `pnpm --filter @sj/api staging:verify` (needs staging secrets; not yet run) |
+| Load test | TBD-33's registration-close and event-morning journeys, at the agreed load-test target | `scripts/load_test.js` (k6; prepared, run only as a local mechanical smoke test so far, not yet against real infrastructure — see PHASES.md Phase 10) |
+| Restore drill | Point-in-time-recovery procedure and results log (AT-36) | [RESTORE_DRILL.md](RESTORE_DRILL.md) (runbook prepared, not yet executed — needs PITR budget approval) |
 
-**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database), `e2e_event_notices.py` (event information, documents and notices across console, website and app; needs a freshly seeded database), `e2e_support.py` (emergency offline then online, Help Desk refusal and escalation, acknowledge to resolve, Management read-only, Admin no access; needs `HELPDESK_PROVIDER=stub` and a freshly seeded database). Run commands are in the README.
+**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database), `e2e_event_notices.py` (event information, documents and notices across console, website and app; needs a freshly seeded database), `e2e_support.py` (emergency offline then online, Help Desk refusal and escalation, acknowledge to resolve, Management read-only, Admin no access; needs `HELPDESK_PROVIDER=stub` and a freshly seeded database), `e2e_reports_audit.py` (Phase 9: permission-filtered report lists and CSV downloads, audit log filtering, retention panel, refusal screens, across admin/management/support). Run commands are in the README.
 
-**CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows run locally, not in CI.
+**CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows, the k6 load-test script and the restore drill all run locally, not in CI.
 
-**Last recorded verification (16 Oct 2026, commit `a18d52a`):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. GitHub Actions `ci` run 38881778185 passed (install, typecheck, API tests on Postgres, mobile tests, builds, mobile bundle). The separate **Android APK** workflow (added in `6316d64`) fails at its "Set up Java" step on that commit and on `a18d52a`, before any app code is built; it is not caused by Phase 8 and is not fixed here.
+**Last recorded verification (16 Oct 2026, this delivery):** see [PHASES.md](PHASES.md)'s Phase 9 and Phase 10 "what was built" sections for the exact test counts, and §7 and §9 above for what each covers. In summary: the API and mobile suites both grew (reports, audit, retention, offline cache, reinstall guard); typecheck, frozen-lockfile install, production builds and the mobile web export all passed; eleven browser flows passed against a fresh database, including the new `e2e_reports_audit.py`. The k6 load-test script and the restore-drill runbook were exercised only as described above — neither is the real TBD-33/AT-36 test.
 
-**Previous (16 Oct 2026, commit `93ba3c0`):** 384 API and 8 mobile tests; 9 browser flows; GitHub Actions run 38849278393 passed.
+**Previous (16 Oct 2026, commit `a18d52a`):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. GitHub Actions `ci` run 38881778185 passed (install, typecheck, API tests on Postgres, mobile tests, builds, mobile bundle). The separate **Android APK** workflow (added in `6316d64`) fails at its "Set up Java" step on that commit, before any app code is built; it is not caused by Phase 8 and was not fixed there.
+
+**Earlier (16 Oct 2026, commit `93ba3c0`):** 384 API and 8 mobile tests; 9 browser flows; GitHub Actions run 38849278393 passed.
 
 ---
 
@@ -629,6 +684,7 @@ Development staff sign-ins (dev mode only): `manager@dev.local`, `manager2@dev.l
 | `HELPDESK_PROVIDER`, `HELPDESK_VERTEX_PROJECT`, `HELPDESK_VERTEX_LOCATION`, `HELPDESK_VERTEX_MODEL`, `HELPDESK_VERTEX_ACCESS_TOKEN`, `HELPDESK_VERTEX_SERVICE_ACCOUNT`, `HELPDESK_RATE_LIMIT` | AI Help Desk: `stub` (development, not an AI; refused in production), `none` (fallback answers only; refused in production) or `vertex` with its own service account. Questions per person per minute (default 20) |
 | `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` | Push for notices: `none`, `log` (development only, refused in production) or `expo`. The access token is a server-side secret |
 | `STORAGE_PROVIDER`, `STORAGE_BUCKET`, `FILE_LINK_SECRET` | Documents: `database` (development only, refused in production) or `supabase` (private bucket, default `event-documents`). `FILE_LINK_SECRET` signs the development store's links |
+| `RETENTION_PURGE_ENABLED`, `RETENTION_DRY_RUN` | The Phase 9 retention sweep: off and dry-run by default (TBD-32 is not yet approved) |
 | `DEV_NOW` | Development only: pins the API clock |
 | `LAUNCH_APPROVED` | Production launch attestation. Never set outside production, and only after sign-off |
 | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AUTH_MODE`, `NEXT_PUBLIC_SIGNIN_METHODS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Website and console (public values only) |
@@ -651,6 +707,8 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 | Event information and notices | TBD-06 (tentative programme as drafts), TBD-07 (112 first), TBD-24 (who edits what), TBD-29 (in-app plus push, groups), TBD-51 (documents), TBD-52 (Expo push), TBD-53 (drafts, corrections, push timing) |
 | Imports | TBD-41 (column set v1) |
 | Help Desk, support and emergency | TBD-07 (112 first; venue numbers awaiting Organisers), TBD-27 (windows as configuration; partly: no working-day calendar, duty lead or event director), TBD-54, TBD-55, TBD-56, TBD-57. TBD-28 roster and SMS alerts **not built** |
+| Reports, audit and retention | TBD-31 (export permissions, role-based), TBD-58 (audit view Admin-only), TBD-32 (3 of 7 retention categories; see TBD-59 for the rest) |
+| Mobile | OD-02 (sign out on reinstall) |
 
 ---
 
@@ -661,9 +719,13 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 | WhatsApp Help Desk channel | separate workstream | Owned by another team; not in this repository's Phase 8 |
 | Live Vertex AI Help Desk and an automated Help Desk evaluation | — | Vertex AI account (TBD-35) |
 | Organiser-approved windows, escalation contacts (duty lead, event director), working-day calendar, support roster and SMS alerts to on-duty staff | — | Organisers (TBD-27, TBD-28); DLT template for alert SMS |
-| Offline cache, reports and exports, audit view | 9 | TBD-31 |
-| Security review, load test, restore drill, store submission, production release | 10 | Accounts (TBD-36), budget (TBD-46) |
-| Sign-out after app reinstall (OD-02) | before store submission | — |
+| Retention purge for support/emergency tickets, and for application/decision/jury/account anonymisation (4 of TBD-32's 7 categories) | 9 | Legal + Organisers to resolve the append-only-ticket conflict (TBD-59); its own design pass for the anonymisation categories |
+| FR-30 (archive) | 9 | Narrower than PRD's FR-25…FR-30 range; not built, and not yet flagged elsewhere beyond this row |
+| Independent security review / penetration test | 10 | An external party engaged (Organisers/Budget). A self-review exists ([SECURITY_SELF_REVIEW.md](SECURITY_SELF_REVIEW.md)) but does not substitute for this |
+| The real TBD-33 load test against real infrastructure | 10 | A TBD-33-sized staging/production environment (TBD-36, TBD-46). The script is prepared (`scripts/load_test.js`) and has only been run as a local mechanical smoke test |
+| The real AT-36 restore drill | 10 | PITR budget approval (TBD-33, TBD-46). The runbook is prepared ([RESTORE_DRILL.md](RESTORE_DRILL.md)) but not executed |
+| Mobile store submission, production release, change freeze | 10 | Organisation-owned store accounts (TBD-36); every other launch-checklist row, including items from Phases 1–9 that remain unapproved |
+| OD-02 verified on a real device (device protocol D8) | 10 | A real iPhone and Android phone — the code itself is built (§6.21) |
 | Live Vertex AI, Amazon SES and MSG91 (with DLT templates) | — | Vendor accounts and contracts (TBD-35) |
 | Live push on real devices; private Supabase Storage bucket on staging | — | EAS project and FCM/APNs credentials under organisation accounts (TBD-36, TBD-52); staging deployment (STAGING.md) |
 | Publishing the final programme and venue emergency numbers | — | Organisers (TBD-06, TBD-07) |

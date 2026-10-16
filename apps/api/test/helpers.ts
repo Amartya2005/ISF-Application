@@ -68,6 +68,7 @@ export async function createTestApp(
     runWorkers: false, publicWebUrl: "https://web.test", ranking: { provider: "stub" }, email: { provider: "none" }, sms: { provider: "none" },
     push: { provider: "none" }, storage: { provider: "database", bucket: "event-documents", fileLinkSecret: SECRET },
     helpdesk: { provider: "stub", rateLimit: 1000 },
+    retention: { enabled: false, dryRun: true },
     ...opts.config,
   };
   const app = await buildApp({

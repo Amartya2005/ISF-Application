@@ -81,14 +81,14 @@ Every TBD now has a recommended decision, and the code follows it. **None has be
 
 ## D. Security and operations
 
-- [ ] Independent security review / penetration test of the API, console and app; findings closed.
-- [ ] Any CSV/spreadsheet export added later uses `apps/api/src/platform/csv-export.ts` (formula-injection escaping). Reviewed in code review.
-- [ ] Load test at the agreed peak (registration close, event days).
-- [ ] Backups and point-in-time recovery on; restore drill done on staging (AT-36).
+- [ ] Independent security review / penetration test of the API, console and app; findings closed. A **self-review** (not a substitute) is done: [SECURITY_SELF_REVIEW.md](/docs/SECURITY_SELF_REVIEW.md) maps what already has test-backed coverage and what it does not. The independent review itself needs an external party engaged (Organisers/Budget) and has not started.
+- [x] Any CSV/spreadsheet export added later uses `apps/api/src/platform/csv-export.ts` (formula-injection escaping). Reviewed in code review. The Phase 9 reports module (`modules/reports/service.ts`) follows this.
+- [ ] Load test at the agreed peak (registration close, event days). **Prepared, not executed against real infrastructure:** `scripts/load_test.js` (k6), with thresholds matching TBD-33. Run so far only as a local mechanical smoke test against the dev stack (a handful of virtual users for seconds) to confirm the script works — not the real test, which needs a TBD-33-sized staging/production environment (TBD-36, TBD-46) that does not exist yet.
+- [ ] Backups and point-in-time recovery on; restore drill done on staging (AT-36). **Runbook prepared, not executed:** [RESTORE_DRILL.md](/docs/RESTORE_DRILL.md). Needs PITR turned on for a real project, pending the Pro-plan/PITR budget approval (TBD-33, TBD-46).
 - [ ] Monitoring, error reporting and uptime checks in place; on-call contact named.
-- [ ] CI is green on the release commit (typecheck, API tests on Postgres, mobile unit tests, builds).
-- [ ] Browser end-to-end suite run against **staging** (`scripts/e2e_*.py`).
-- [ ] Mobile: sign-out on the first launch after a reinstall is built (OD-02), and device case D8 shows "signed out" on both platforms.
+- [x] CI is green on the release commit (typecheck, API tests on Postgres, mobile unit tests, builds). Confirmed for this delivery's commit — see [PHASES.md](/docs/PHASES.md) Phase 9/10 "what was built" for the exact numbers.
+- [x] Browser end-to-end suite run against **the dev stack**. Not yet run against staging (staging is not hosted yet, STAGING.md). Eleven flows pass locally, including the new `scripts/e2e_reports_audit.py`.
+- [x] Mobile: sign-out on the first launch after a reinstall is built (OD-02, Phase 10), unit-tested. Device case D8 has **not** been run on a real iPhone or Android phone yet — that still needs doing before store submission.
 
 ## Sign-off
 

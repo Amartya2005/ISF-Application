@@ -49,7 +49,13 @@ export type Permission =
   | "user.read"
   | "user.manage"
   | "role.assign"
-  | "activation.issue";
+  | "activation.issue"
+  // Phase 9: reports/exports and the admin audit view (FR-RPT-*, FR-AUD-*; TBD-31, TBD-59). Export is a permission
+  // separate from viewing a resource (TBD-31): a report also needs the matching view permission, checked in
+  // `modules/reports/service.ts`. The audit view is Admin-only (TBD-59); Management already reviews everything it
+  // may act on through its own screens.
+  | "report.export"
+  | "audit.read";
 
 /** Granted to every authenticated principal regardless of role. */
 export const AUTHENTICATED: ReadonlySet<Permission> = new Set([
@@ -64,7 +70,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   // RQ §9: the Admin initiates or oversees volunteer assignment; saving (review) and reassignment are Management's.
   // TBD-24: the Admin maintains the official source information (documents, emergency contacts, safety, pages).
   admin: ["import.manage", "user.read", "user.manage", "role.assign", "activation.issue", "volunteer.read", "volunteer.generate",
-    "content.read_all", "content.manage_source"],
+    "content.read_all", "content.manage_source",
+    // Phase 9 (TBD-31, TBD-59): exports accounts, imports and volunteer assignments; the only role with audit.read.
+    "report.export", "audit.read"],
   management: [
     "application.read_all", "decision.draft", "decision.release", "selection_limit.configure",
     "criteria.manage", "ranking.run", "ranking.read", "decision.correct",
@@ -75,6 +83,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     // Phase 8: Management reviews support issues read-only (FR-SUP-10), receives escalations (TBD-27) and sets the
     // per-edition acknowledgement windows.
     "support.review", "support.alerts", "support.configure",
+    // Phase 9 (TBD-31): exports applications, selection decisions and jury results.
+    "report.export",
   ],
   // Participant permissions are further limited to the caller's own startup, assignments and edition on the server.
   startup_team_leader: ["volunteer.my_volunteer"],

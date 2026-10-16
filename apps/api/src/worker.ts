@@ -9,7 +9,7 @@ const sql = createSql(config.databaseUrl, { max: 4 });
 const log = { info: (m: string) => console.log(m), error: (o: unknown, m: string) => console.error(m, o) };
 const clock = () => config.devNow ?? new Date();
 const stop = startWorkers({ sql, model: rankingModelFrom(config), senders: await sendersFrom(config, log.info), clock, log,
-  pushReceipts: config.push.provider === "expo" ? { accessToken: config.push.expoAccessToken } : undefined });
+  pushReceipts: config.push.provider === "expo" ? { accessToken: config.push.expoAccessToken } : undefined, retention: config.retention });
 const close = async () => {
   await stop();
   await sql.end({ timeout: 5 });

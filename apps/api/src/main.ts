@@ -16,7 +16,7 @@ const clock = () => config.devNow ?? new Date();
 const app = await buildApp({ config, sql, verifier, identity, clock });
 const stopWorkers = config.runWorkers
   ? startWorkers({ sql, model: rankingModelFrom(config), senders: await sendersFrom(config, (m) => app.log.info(m)), clock, log: app.log,
-      pushReceipts: config.push.provider === "expo" ? { accessToken: config.push.expoAccessToken } : undefined })
+      pushReceipts: config.push.provider === "expo" ? { accessToken: config.push.expoAccessToken } : undefined, retention: config.retention })
   : async () => {};
 
 const close = async () => {

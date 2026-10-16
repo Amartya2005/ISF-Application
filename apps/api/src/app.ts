@@ -1,7 +1,7 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import {
   ACCOUNT_STATUSES, ActivationRequest, CorrectionReviewRequest, CriteriaSetCreate, CutLineRequest, DecisionCorrectionRequest, DecisionRequest,
   DevSessionRequest, normaliseMobile, IMPORT_CATEGORIES, ImportCommitRequest, ImportPreviewRequest, INTERNAL_STATUSES,
@@ -49,6 +49,11 @@ import {
   acknowledge, addNote, addRequesterNote, assign, createOnBehalf, createOwnTicket, escalate, findRequester, getPolicy, logContact, markAlertSeen,
   myAlerts, myTickets, raisePriority, reportEmergency, setPolicy, setStatus as setTicketStatus, supportQueue, ticketDetail,
 } from "./modules/support/service.js";
+import { listAuditEvents } from "./modules/audit/service.js";
+import {
+  exportAccounts, exportApplications, exportImports, exportJury, exportSelection, exportVolunteers,
+} from "./modules/reports/service.js";
+import { recentSweeps } from "./modules/retention/purge.js";
 import { automatedChannels, rankingModelFrom } from "./workers.js";
 import { issueDevToken, type IdentityResolver, type TokenVerifier } from "./platform/auth.js";
 import { AppError, parse, registerErrorHandler } from "./platform/errors.js";
@@ -98,6 +103,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     origin: config.corsOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["authorization", "content-type"],
+    // Console and web run on a different origin from the API, so without this the browser's fetch() in
+    // packages/client (reqCsv, Phase 9 reports) cannot read content-disposition to get the suggested file name.
+    exposedHeaders: ["content-disposition"],
     credentials: false,
     maxAge: 600,
   });
@@ -486,6 +494,51 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.get("/v1/support/editions/:year/policy", alertsG, async (req) => getPolicy(sql, parse(Year, req.params).year));
   app.put("/v1/manage/editions/:year/support-policy", { preHandler: [auth, requirePermission("support.configure")] }, async (req) =>
     setPolicy(sql, principalOf(req), parse(Year, req.params).year, parse(SupportPolicy, req.body)));
+
+  // ---------------------------------------------------------------- reports and controlled exports (Phase 9, FR-RPT-*; TBD-31)
+  // Export is a permission separate from viewing (checked again inside each service function, defence in depth).
+  const csv = (fileName: string, body: string) => (reply: FastifyReply) =>
+    reply.header("content-type", "text/csv; charset=utf-8").header("content-disposition", `attachment; filename="${fileName}"`).send(body);
+  const rExport = { preHandler: [auth, requirePermission("report.export")] };
+  app.get("/v1/admin/reports/accounts.csv", rExport, async (req, reply) => {
+    const r = await exportAccounts(sql, principalOf(req));
+    return csv(r.fileName, r.csv)(reply);
+  });
+  app.get("/v1/admin/reports/imports.csv", rExport, async (req, reply) => {
+    const r = await exportImports(sql, principalOf(req));
+    return csv(r.fileName, r.csv)(reply);
+  });
+  app.get("/v1/admin/editions/:year/reports/volunteers.csv", rExport, async (req, reply) => {
+    const r = await exportVolunteers(sql, principalOf(req), parse(Year, req.params).year);
+    return csv(r.fileName, r.csv)(reply);
+  });
+  app.get("/v1/manage/editions/:year/reports/applications.csv", rExport, async (req, reply) => {
+    const r = await exportApplications(sql, principalOf(req), parse(Year, req.params).year);
+    return csv(r.fileName, r.csv)(reply);
+  });
+  app.get("/v1/manage/editions/:year/reports/selection.csv", rExport, async (req, reply) => {
+    const r = await exportSelection(sql, principalOf(req), parse(Year, req.params).year);
+    return csv(r.fileName, r.csv)(reply);
+  });
+  app.get("/v1/manage/editions/:year/reports/jury.csv", rExport, async (req, reply) => {
+    const r = await exportJury(sql, principalOf(req), parse(Year, req.params).year);
+    return csv(r.fileName, r.csv)(reply);
+  });
+
+  // ---------------------------------------------------------------- admin audit review (Phase 9, FR-AUD-*; TBD-59)
+  const AuditQuery = z.object({
+    actorUserId: z.string().uuid().optional(), action: z.string().trim().max(100).optional(), entityType: z.string().trim().max(100).optional(),
+    edition: z.coerce.number().int().min(2026).max(2100).optional(),
+    from: z.string().datetime({ offset: true }).optional(), to: z.string().datetime({ offset: true }).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50), offset: z.coerce.number().int().min(0).default(0),
+  });
+  const aRead = { preHandler: [auth, requirePermission("audit.read")] };
+  app.get("/v1/admin/audit", aRead, async (req) => {
+    const q = parse(AuditQuery, req.query);
+    return listAuditEvents(sql, { ...q, from: q.from ? new Date(q.from) : undefined, to: q.to ? new Date(q.to) : undefined });
+  });
+  // Operational visibility into the retention sweep (TBD-32): what ran, when, and how many rows (never which rows).
+  app.get("/v1/admin/retention", aRead, async () => ({ enabled: config.retention.enabled, dryRun: config.retention.dryRun, recentSweeps: await recentSweeps(sql) }));
 
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {

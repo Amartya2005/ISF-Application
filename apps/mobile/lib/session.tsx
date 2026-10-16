@@ -6,6 +6,7 @@ import { type MeResponse, type SignInIdentifier, type SignInMethod } from "@sj/c
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { API_URL, AUTH_MODE, SIGNIN_METHODS, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { registerForPush, unregisterPush } from "./push";
+import { checkReinstallOnThisDevice } from "./reinstall-guard";
 import { secureStorage, supabaseAuthStorage } from "./storage";
 
 const DEV_TOKEN_KEY = "sj.mobile.token";
@@ -71,11 +72,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void (async () => {
+      // OD-02: the Keychain (where the session lives) can survive an app reinstall on iOS. Before trusting any
+      // stored session, check whether this is the first launch after an install or reinstall and, if so, clear it
+      // — a device that changed hands should never silently resume the previous owner's sign-in.
+      if (await checkReinstallOnThisDevice()) {
+        if (AUTH_MODE === "dev") await secureStorage.remove(DEV_TOKEN_KEY);
+        else await (await sb()).auth.signOut();
+        setSignedIn(false);
+        return;
+      }
       const token = await getToken();
       setSignedIn(!!token);
       if (token) await refreshMe();
     })();
-  }, [getToken, refreshMe]);
+  }, [getToken, refreshMe, sb]);
 
   const startSignIn = useCallback(async (id: SignInIdentifier) => {
     if (AUTH_MODE === "dev") {

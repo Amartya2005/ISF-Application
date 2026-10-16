@@ -67,6 +67,10 @@ const Env = z.object({
   HELPDESK_VERTEX_SERVICE_ACCOUNT: z.string().email().optional().or(z.literal("").transform(() => undefined)),
   // Questions per minute per signed-in user (SEC-05). The emergency control is never rate-limited.
   HELPDESK_RATE_LIMIT: z.coerce.number().int().positive().default(20),
+  // ---- Phase 9: data-retention purge (TBD-32). Off by default pending Legal approval of the retention schedule;
+  // once enabled, a dry run (the default) only counts candidates and never deletes. See modules/retention/purge.ts.
+  RETENTION_PURGE_ENABLED: z.enum(["true", "false"]).default("false"),
+  RETENTION_DRY_RUN: z.enum(["true", "false"]).default("true"),
 });
 
 export type Config = {
@@ -96,6 +100,7 @@ export type Config = {
     vertex?: { project: string; location: string; model: string; accessToken?: string; serviceAccount?: string };
     rateLimit: number;
   };
+  retention: { enabled: boolean; dryRun: boolean };
 };
 
 /**
@@ -215,5 +220,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
         : undefined,
       rateLimit: e.HELPDESK_RATE_LIMIT,
     },
+    retention: { enabled: e.RETENTION_PURGE_ENABLED === "true", dryRun: e.RETENTION_DRY_RUN !== "false" },
   };
 }

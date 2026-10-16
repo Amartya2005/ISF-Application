@@ -28,3 +28,13 @@ export const supabaseAuthStorage = {
   setItem: (key: string, value: string) => (Platform.OS === "web" ? secureStorage.set(key, value) : nativeChunked.setItem(key, value)),
   removeItem: (key: string) => (Platform.OS === "web" ? secureStorage.remove(key) : nativeChunked.removeItem(key)),
 };
+
+/**
+ * Generic cache for values too large for a single secure-store entry (web: localStorage, no size limit; native: the
+ * same chunked keychain/keystore store used for the session). Used for offline caches such as event information
+ * (FR-25, apps/mobile/lib/offline-cache.ts) that are bigger than the ~2 KB emergency-contacts cache.
+ */
+export const largeCache = {
+  get: (key: string) => (Platform.OS === "web" ? secureStorage.get(key) : nativeChunked.getItem(key)),
+  set: (key: string, value: string) => (Platform.OS === "web" ? secureStorage.set(key, value) : nativeChunked.setItem(key, value)),
+};

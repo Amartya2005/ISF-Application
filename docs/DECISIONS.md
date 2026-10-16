@@ -50,9 +50,9 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-28 | Minimum roster: 2 support staff per shift on 17–20 Dec (07:00–22:00 IST) plus 1 on call overnight. Business hours otherwise. Alerts: dashboard plus SMS to the on-duty phone. | Default — awaiting Organisers · dashboard alerts built (Phase 8); **no roster, no SMS alerts** |
 | TBD-29 | Notices go in-app plus push only. "Authorised groups" are named lists that Management maintains. | Default — awaiting Management · **built (Phase 7)** |
 | TBD-30 | No QR check-in, meal tracking or room allocation for 2026. The module boundaries stay disabled. | Default — awaiting Organisers |
-| TBD-31 | Export is a separate permission. Admin exports the data it administers; Management exports selection and jury data; nobody else. Every export is audited and sanitised. | Default — awaiting Organisers |
-| TBD-32 | Draft notice and retention schedule below and in [PRIVACY_NOTICE_DRAFT.md](/docs/PRIVACY_NOTICE_DRAFT.md). The launch gate stays shut until legal approval. | Default — awaiting **Legal** |
-| TBD-33 | Design for 3,000 accounts and 600 concurrent users; load-test at twice that. p95 < 500 ms. 99.5 % availability. RPO ≤ 5 min in critical windows, ≤ 24 h otherwise. RTO ≤ 4 h. | Default — awaiting Organisers + Budget |
+| TBD-31 | Export is a separate permission. Admin exports the data it administers; Management exports selection and jury data; nobody else. Every export is audited and sanitised. | Default — awaiting Organisers · **built (Phase 9)** |
+| TBD-32 | Draft notice and retention schedule below and in [PRIVACY_NOTICE_DRAFT.md](/docs/PRIVACY_NOTICE_DRAFT.md). The launch gate stays shut until legal approval. | Default — awaiting **Legal** · 3 of 7 purge categories **built (Phase 9)**; see TBD-59 |
+| TBD-33 | Design for 3,000 accounts and 600 concurrent users; load-test at twice that. p95 < 500 ms. 99.5 % availability. RPO ≤ 5 min in critical windows, ≤ 24 h otherwise. RTO ≤ 4 h. | Default — awaiting Organisers + Budget · load-test script and restore-drill runbook **prepared (Phase 10)**, not run against real infrastructure |
 | TBD-34 | Android 7+ and iOS 16.4+ (the toolchain minimums). Test on the current and two previous OS versions, and the last two versions of the main browsers. | **Decided** |
 | TBD-35 | AI: Google Vertex AI in the same Google Cloud project as hosting, with separate service accounts per AI function. WhatsApp: Meta Cloud API directly. Email: Amazon SES (Mumbai). SMS: a DLT-compliant Indian aggregator (default MSG91) through Supabase's Send SMS hook. | Default — awaiting Organisers + Budget (contracts) · adapters **built (Phase 5)**, live accounts not yet verified |
 | TBD-36 | The organisers' legal entity owns every account (Apple, Google, WhatsApp, cloud, domain, Supabase, GitHub). Zeny2Labs gets member access. Use organisation store accounts. | Default — awaiting Organisers |
@@ -77,8 +77,10 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-55 | Emergency control: 112 first and never waits for anything; alerting the team is a second explicit tap; one open emergency per person (a new report is added to it and re-alerts); retries reuse one request id. | Default — awaiting Organisers · **built (Phase 8)** |
 | TBD-56 | Ticket lifecycle: Open → Acknowledged → In Progress → Resolved (or Acknowledged → Resolved); Resolved is final (no reopening: a new ticket instead); priority and emergency only go up; escalation is an attribute and cannot be withdrawn. | Default — awaiting Management · **built (Phase 8)** |
 | TBD-57 | Re-alerts and escalation: unacknowledged urgent tickets re-alert all support staff on an interval up to a maximum; at the window they escalate to all active Management; normal tickets are flagged overdue once; with no active support staff, Management is alerted. | Default — awaiting Organisers · **built (Phase 8)** |
+| TBD-58 | The admin audit log viewer is **Admin-only** (not Management), even though Management holds other read-all permissions. Every action is visible, including Management's own. | **Decided** (security/least-privilege) · **built (Phase 9)** |
+| TBD-59 | Data-retention purge (TBD-32) is scoped to the 3 categories with no conflicting design: import rows (30 days), activation tokens (90 days), Help Desk transcripts with no linked ticket (90 days). Applications/decisions/jury/accounts anonymisation and support/emergency-ticket deletion are **not built**: `support_tickets`, `ticket_events` and `support_alerts` are append-only by database trigger (Phase 8, "support tickets are kept, never deleted"), which conflicts with TBD-32's literal 1-year deletion target for tickets, and this register does not override that deliberate safety design unilaterally. | Default — awaiting Legal + Organisers to resolve the conflict (keep tickets append-only and change the retention target, or approve reversing the trigger) |
 | OD-01 | WhatsApp verification uses a link code shown in the signed-in app. | **Decided** |
-| OD-02 | iOS reinstall: sign out on the first launch after any reinstall. To build before store submission (not part of the Phase 6 jury/volunteer delivery). | **Decided** · not built yet |
+| OD-02 | iOS reinstall: sign out on the first launch after any reinstall. | **Decided** · **built (Phase 10)**, not yet verified on real devices (D8) |
 | OD-03 | Maps: static map links inside venue content. No maps SDK or API. | **Decided** |
 | OD-04 | Repository visibility: **private** until launch approval. | Default — awaiting repo owner |
 | OD-05 | Descope order (EXECUTION_PLAN §8) as pre-approved contingency with dated checkpoints. | Default — awaiting Organisers |
@@ -514,6 +516,11 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - Every export is audited and goes through `platform/csv-export.ts` (formula-injection escaping).
 - **Approval:** Organisers. **Status:** Default — awaiting Organisers. Built in Phase 9.
 
+### TBD-58 · Scope of the admin audit log viewer (FR-AUD-*, AT-16)
+- **Decision:** The audit log viewer (`GET /v1/admin/audit`) is **Admin-only**. Management holds other broad read-all permissions (`application.read_all`, `volunteer.read`) for review purposes, but the audit log — which includes Management's own decisions, corrections and exports — is not one of them.
+- **Why:** An auditor's own actions should be visible to someone else, not only to themself; keeping the viewer to one role (Admin, who has no decision-making power over applications, selection or jury) avoids a reviewer being able to see, and potentially explain away, only their own trail. This is a least-privilege engineering choice, not a business-policy question, so it needs no external approval.
+- **Status:** **Decided** (security design). Built in Phase 9 (`audit.read` permission, `apps/api/src/modules/audit/service.ts`).
+
 ### OD-01 · WhatsApp number verification (PRD §11, was "TBD" without a number)
 - **Decision:** A **link code shown in the signed-in app**, sent from WhatsApp, links that number to the account. A number that matches no account, several accounts or a changed number gets public information only.
 - **Why:**
@@ -550,7 +557,19 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - whether Rule 8's 48-hour pre-erasure notice applies;
   - cross-border processing by vendors (TBD-35);
   - breach procedure.
-- **Approval:** **Legal** and Organisers. **Status:** Default — awaiting Legal. The purge jobs are built in Phase 9.
+- **Approval:** **Legal** and Organisers. **Status:** Default — awaiting Legal. The purge jobs are built in Phase 9, for 3 of the 7 categories above (see TBD-59 for the other 4 and why).
+
+### TBD-59 · Retention purge: what Phase 9 built, and the support-ticket conflict
+- **Decision / finding:** Of TBD-32's 7 retention categories, Phase 9 built an automatic sweep (`apps/api/src/modules/retention/purge.ts`, config-gated off by default, `RETENTION_PURGE_ENABLED=false`) for the 3 that have no conflicting design:
+  - **raw import rows** — deleted 30 days after commit (the batch summary row is kept);
+  - **activation token hashes** — deleted 90 days after use, revocation or expiry;
+  - **Help Desk transcripts** — deleted 90 days after the conversation's last message, but only when no support ticket is linked to it (a linked transcript is kept with the ticket, since the ticket's own history is append-only — see below).
+
+  The other 4 categories are **not built**, and not silently worked around:
+  - **Support and emergency tickets, 1 year after closure** — `support_tickets`, `ticket_events` and `support_alerts` are append-only by database trigger, built deliberately in Phase 8 ("support tickets are kept, never deleted", hint `TICKET-HISTORY`). Deleting them on a schedule would mean either reversing that trigger (removing a safety design built for a reason: an auditable, tamper-proof support history) or adding a bypass path that undermines it. This register does not make that call unilaterally.
+  - **Applications not selected (6 months), selected applications/decisions/jury evaluations (2 years), and accounts (6 months)** — these need either hard deletion or anonymisation decided row-by-row against live foreign-key relationships (an application links to a startup, decisions, jury evaluations and audit events that themselves must stay intact); this needs its own design pass, not a quick addition to this phase.
+- **Why not reversed or worked around:** Both designs (TBD-32's purge schedule and Phase 8's append-only trigger) were deliberate, reasoned choices serving different goals (data minimisation vs. an auditable support trail). Resolving the conflict is a policy call — which value wins, or whether the retention period for tickets specifically should simply be longer than 1 year — not an engineering default this register should set on its own.
+- **Approval:** **Legal** (to confirm whether DPDP compliance allows an exception for append-only audit/safety trails, or whether the 1-year figure should change) and **Organisers** (whether keeping ticket history indefinitely, for safety/liability reasons, outweighs the minimisation goal). **Status:** Default — awaiting Legal + Organisers.
 
 ### TBD-33 · Peak load, performance, availability, RPO and RTO (P0)
 - **Decision:**
@@ -563,6 +582,9 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - **RTO:** 4 hours or less, proven by a restore drill on staging before 10 Dec (AT-36).
 - **Why:** These targets are sized from the only number in the sources, and PITR is paid for only when losing data would hurt most.
 - **Approval:** Organisers, and Budget for PITR. **Status:** Default — awaiting Organisers + Budget.
+- **Phase 10 prepared, not executed:**
+  - **Load test:** `scripts/load_test.js` (k6), two scenarios (registration-close, event-morning) against the journeys actually built, with thresholds matching the targets above (p95 < 500ms on reads, errors < 1%). Run only as a local mechanical smoke test (a handful of VUs for seconds, against the dev stack) to prove the script itself works — that is **not** the TBD-33 load test and proves nothing about real infrastructure. The real test needs an ISF-owned, TBD-33-sized staging/production environment (TBD-36, TBD-46) and either pre-minted staging bearer tokens or a disposable dev-mode target; neither exists yet.
+  - **Restore drill:** [RESTORE_DRILL.md](/docs/RESTORE_DRILL.md), a step-by-step PITR restore procedure for AT-36. Not executed: it needs PITR turned on for a real Supabase project, which needs the Pro-plan + PITR budget approval this TBD is still awaiting.
 
 ### TBD-34 · Supported OS versions and browsers
 - **Decision:**
@@ -626,12 +648,12 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### OD-02 · iOS keychain survives reinstall (DEVICE_TEST_PROTOCOL D8)
-- **Decision:** **Sign out on the first launch after any reinstall**, on both platforms. The app keeps a marker in app storage, which iOS deletes on uninstall, and clears the keychain session when the marker is missing.
+- **Decision:** **Sign out on the first launch after any reinstall**, on both platforms. The app keeps a marker file in its sandboxed document directory, which the OS deletes along with the app on uninstall (on both iOS and Android, unlike the keychain/keystore), and clears the stored session when the marker is found missing.
 - **Why:**
   - A reinstall should not silently restore a session; the device may have changed hands.
   - The behaviour becomes the same on Android and iOS.
   - Signing in again takes seconds.
-- **Status:** **Decided** (security). **Not built yet.** It was listed under Phase 6, but the Phase 6 delivery covered jury and volunteers only. It must be built before store submission (Phase 10), and D8 must then show "signed out" on both platforms.
+- **Status:** **Decided** (security). **Built in Phase 10** (`apps/mobile/lib/reinstall-guard.ts`, wired into `session.tsx`'s start-up check; unit-tested with a fake marker file, `reinstall-guard.test.ts`). **Not yet verified on a real device**: D8 in [DEVICE_TEST_PROTOCOL.md](/docs/DEVICE_TEST_PROTOCOL.md) still needs to be run on a real iPhone and Android phone to confirm the OS actually wipes the marker on uninstall the way this relies on.
 
 ### OD-03 · Maps and venue navigation (PRD §8, was "TBD (not in RQ)")
 - **Decision:** Static map links inside venue content. No maps SDK or API key.
@@ -665,6 +687,9 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | Phase 5 (15 Oct 2026) | Migrations `0008_ranking_selection.sql` and `0009_ranking_worker_set_role.sql`, and the ranking, outbox and correction modules build TBD-01, -13, -14, -18, -37, -42 and -44 and the TBD-35 adapters. See [PHASES.md](PHASES.md) for details. |
 | Phase 6 (15 Oct 2026) | Migration `0010_jury_volunteers.sql` and the `jury` and `volunteers` modules build TBD-20, -21, -22, -23 and -43. New defaults TBD-47…50 record the choices the requirements leave open. See [PHASES.md](PHASES.md). |
 | Phase 7 (16 Oct 2026) | Migration `0011_event_content_notices.sql` and the `content` and `notices` modules build TBD-06, -24 and -29. New defaults TBD-51…53 record the choices the requirements leave open (documents, push provider, drafts and corrections). See [PHASES.md](PHASES.md). |
+| Phase 8 (16 Oct 2026) | Migration `0012_helpdesk_support.sql` and the `helpdesk` and `support` modules build TBD-07 (112 first), -54, -55, -56, -57. See [PHASES.md](PHASES.md). |
+| Phase 9 (16 Oct 2026) | Migration `0013_reports_retention.sql` and the `reports`, `audit` and `retention` modules build TBD-31 (export permissions) and 3 of TBD-32's 7 retention categories. New defaults TBD-58 (audit view is Admin-only) and TBD-59 (the retention/append-only-ticket conflict) record the choices this phase's design review surfaced. The mobile app gets an offline cache for event information. See [PHASES.md](PHASES.md). |
+| Phase 10 (16 Oct 2026) | OD-02 (sign out on reinstall) is built. A load-test script and a restore-drill runbook are prepared for TBD-33 but not run against real infrastructure. See [PHASES.md](PHASES.md). |
 
 Sources for vendor and legal facts (checked 15 Oct 2026):
 - [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp)

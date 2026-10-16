@@ -95,4 +95,14 @@ describe("CORS for the website and console", () => {
       await c.close();
     }
   });
+
+  it("exposes content-disposition cross-origin, so the console's CSV exports (Phase 9) can read the file name", async () => {
+    const c = await createTestApp({ corsOrigins: ["http://localhost:3001"] });
+    try {
+      const r = await c.app.inject({ method: "GET", url: "/healthz", headers: { origin: "http://localhost:3001" } });
+      expect(String(r.headers["access-control-expose-headers"])).toContain("content-disposition");
+    } finally {
+      await c.close();
+    }
+  });
 });

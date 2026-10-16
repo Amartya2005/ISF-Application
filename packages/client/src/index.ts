@@ -73,6 +73,8 @@ import type {
   SupportStatusUpdate,
   SupportTicketCreate,
   SupportTicketDetail,
+  AuditPage,
+  RetentionStatus,
 } from "@sj/contracts";
 
 export class ApiError extends Error {
@@ -109,6 +111,24 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
   }
 
   const base = baseUrl.replace(/\/$/, "");
+
+  /** A CSV export (Phase 9, FR-RPT-*): reads the file as text and the server's suggested file name, no JSON parsing. */
+  async function reqCsv(path: string): Promise<{ fileName: string; csv: string }> {
+    const token = await getToken();
+    let res: Response;
+    try {
+      res = await fetch(`${base}${path}`, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new ApiError({ type: "about:blank", title: "Cannot reach the server", status: 0, code: "network_error", detail: "Check your connection and try again." });
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new ApiError((text ? JSON.parse(text) : null) ?? { type: "about:blank", title: res.statusText, status: res.status, code: "http_error" });
+    }
+    const match = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
+    return { fileName: match?.[1] ?? "report.csv", csv: await res.text() };
+  }
+
   return {
     /** Turns an API-relative link (development document storage) into an absolute URL; absolute links pass through. */
     absoluteUrl: (url: string) => (url.startsWith("/") ? `${base}${url}` : url),
@@ -276,6 +296,27 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
       myAssignment: (year: number) => req<MyVolunteerAssignment>("GET", `/v1/editions/${year}/volunteer/assignment`),
       myVolunteer: (year: number) => req<MyVolunteer>("GET", `/v1/editions/${year}/me/volunteer`),
     },
+    // Phase 9: controlled exports (TBD-31; Admin: accounts, imports, volunteers. Management: applications, selection, jury).
+    reports: {
+      accounts: () => reqCsv("/v1/admin/reports/accounts.csv"),
+      imports: () => reqCsv("/v1/admin/reports/imports.csv"),
+      volunteers: (year: number) => reqCsv(`/v1/admin/editions/${year}/reports/volunteers.csv`),
+      applications: (year: number) => reqCsv(`/v1/manage/editions/${year}/reports/applications.csv`),
+      selection: (year: number) => reqCsv(`/v1/manage/editions/${year}/reports/selection.csv`),
+      jury: (year: number) => reqCsv(`/v1/manage/editions/${year}/reports/jury.csv`),
+    },
+    // Phase 9: the Admin audit log viewer (FR-AUD-*, TBD-59).
+    audit: {
+      list: (q: {
+        actorUserId?: string; action?: string; entityType?: string; edition?: number; from?: string; to?: string; limit?: number; offset?: number;
+      } = {}) => {
+        const sp = new URLSearchParams();
+        for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== "") sp.set(k, String(v));
+        return req<AuditPage>("GET", `/v1/admin/audit${sp.size ? `?${sp}` : ""}`);
+      },
+    },
+    // Phase 9: visibility into the data-retention sweep (TBD-32) — counts only, never which rows.
+    retention: { status: () => req<RetentionStatus>("GET", "/v1/admin/retention") },
   };
 }
 export type Api = ReturnType<typeof createApi>;
