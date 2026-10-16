@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Product** | Startup Jathara event platform for International Startup Foundation (ISF), built by Zeny2Labs |
-| **Covers** | Everything built up to and including **Phase 7** (commit `PHASE7SHA`, 16 Oct 2026) |
+| **Covers** | Everything built up to and including **Phase 7** (commits `f29884a` and `93ba3c0`, 16 Oct 2026) |
 | **Production status** | **NOT APPROVED.** Nothing is deployed to production. The API refuses a production start until [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. |
 | **Sources of truth** | The requirements document (`Startup_Jathara_Requirements_Revised_v4`) and the PRD (`ISF_Event_Operations_Platform_PRD_v0.1`). Every open point has a recorded decision in [DECISIONS.md](DECISIONS.md). |
 | **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
@@ -44,7 +44,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `805a0fc`, `9c3416e` | Every TBD decided; application form as edition configuration; 18+ declaration; selection-limit confirmation | — |
 | 15 Oct 2026 | `75dd860` | Phase 5: AI ranking, override reasons, two-person corrections, withdrawal, email/SMS outbox | — |
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
-| 16 Oct 2026 | `PHASE7SHA` | Phase 7: event information, documents, notices and push notifications | 1.1 |
+| 16 Oct 2026 | `f29884a`, `93ba3c0` | Phase 7: event information, documents, notices and push notifications (`93ba3c0`: a test made independent of database collation) | 1.1 |
 
 ---
 
@@ -527,7 +527,7 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 
 **CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows run locally, not in CI.
 
-**Last recorded verification (16 Oct 2026, commit `PHASE7SHA`):** 384 of 384 API tests and 8 of 8 mobile tests passed; typecheck, builds and the mobile web export passed; all 9 browser flows passed against fresh databases; GitHub Actions run PHASE7CI.
+**Last recorded verification (16 Oct 2026, commit `93ba3c0`):** 384 of 384 API tests and 8 of 8 mobile tests passed; typecheck, builds and the mobile web export passed; all 9 browser flows passed against fresh databases; GitHub Actions run 38849278393 passed. (The first CI run on `f29884a` failed on one assertion that depended on database collation; the test now sorts in code.)
 
 ---
 
