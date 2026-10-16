@@ -58,7 +58,7 @@ fieldset { border: 1px solid var(--line); border-radius: var(--radius); padding:
 legend { font-weight: 700; padding: 0 6px; }
 label { display: grid; gap: 6px; font-weight: 600; font-size: 0.95rem; }
 .hint { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
-input[type="text"], input[type="email"], input[type="tel"], input[type="url"], textarea, select {
+input:not([type]), input[type="text"], input[type="datetime-local"], input[type="email"], input[type="tel"], input[type="url"], textarea, select {
   font: inherit; padding: 10px 12px; border: 1px solid #cfd4da; border-radius: 8px; background: #fff; width: 100%; }
 textarea { min-height: 120px; resize: vertical; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -114,3 +114,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .check input { width: auto; }
 .stack { display: grid; gap: 6px; min-width: 220px; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
+
+/* Phase 7: event information and notices */
+.choices-inline { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+button.link { background: none; border: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; }

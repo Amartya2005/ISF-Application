@@ -23,7 +23,7 @@ describe("GET /v1/me", () => {
   it("describes a signed-in person without an account", async () => {
     const r = await t.call("GET", "/v1/me", { as: "new@example.com" });
     expect(r.json).toEqual({ account: null, roles: [], editionAccess: [],
-      permissions: ["application.read_own", "application.withdraw_own", "notification.read_own", "registration.submit"], mfaRequired: false });
+      permissions: ["application.read_own", "application.withdraw_own", "notification.read_own", "push.register_own", "registration.submit"], mfaRequired: false });
   });
 
   it("describes staff with their roles and permissions", async () => {

@@ -23,6 +23,7 @@ export default function RootLayout() {
           <Stack.Screen name="jury/index" options={{ title: "Jury" }} />
           <Stack.Screen name="jury/[startupId]" options={{ title: "Startup" }} />
           <Stack.Screen name="volunteer" options={{ title: "Volunteer" }} />
+          <Stack.Screen name="event" options={{ title: "Event information" }} />
         </Stack>
       </SessionProvider>
     </SafeAreaProvider>

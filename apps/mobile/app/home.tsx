@@ -57,7 +57,8 @@ export default function Home() {
             <H2>Startup Jathara {year}</H2>
             {e?.eventStartsOn && e.eventEndsOn ? <P>{formatDateRange(e.eventStartsOn, e.eventEndsOn)} · GIET University, Gunupur</P> : <P muted>Dates to be announced.</P>}
             {apps.startup && <P>Startup: <Text style={{ fontWeight: "700" }}>{apps.startup.name}</Text></P>}
-            <P muted small>The schedule, venues, food and accommodation details, notices and the Help Desk will appear here as the event team publishes them.</P>
+            <P muted small>Schedule, venues, food, accommodation, safety and emergency contacts, as the event team publishes them. Notices arrive in Messages.</P>
+            <Button title="Programme and event information" onPress={() => router.push({ pathname: "/event", params: { year: String(year) } })} />
             {me.permissions.includes("jury.evaluate") && (
               <Button title={`Jury: score your startups (${year})`} onPress={() => router.push({ pathname: "/jury", params: { year: String(year) } })} />
             )}

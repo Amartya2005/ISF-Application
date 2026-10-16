@@ -86,7 +86,7 @@ Rules:
 | ranking | `GET\|POST /manage/editions/{y}/criteria-sets` · `POST /manage/criteria-sets/{id}/approve` · `GET\|POST /manage/editions/{y}/ranking-runs` · `GET /manage/ranking-runs/{id}` · `PUT /manage/ranking-runs/{id}/cut-line` | M3 ✅ (Phase 5) |
 | jury | `GET /manage/editions/{y}/jury` · `POST /manage/editions/{y}/rubrics` · `POST /manage/rubrics/{id}/approve` · `POST /manage/editions/{y}/jury-assignments` · `DELETE /manage/jury-assignments/{id}` · `POST /manage/editions/{y}/pitch-slots` · `PUT\|DELETE /manage/pitch-slots/{id}` · `POST /manage/pitch-slots/{id}/start\|finish` · `GET /manage/editions/{y}/evaluations` · `POST /manage/evaluations/{id}/reopen` · jurors: `GET /editions/{y}/jury` · `GET /editions/{y}/jury/startups/{id}` · `PUT /editions/{y}/jury/startups/{id}/evaluation` · `POST …/evaluation/submit` | M4 ✅ (Phase 6) |
 | volunteers | `GET /manage/editions/{y}/volunteers` · `POST /manage/editions/{y}/volunteer-runs` · `GET /manage/volunteer-runs/{id}` · `POST /manage/volunteer-runs/{id}/approve\|discard` · `POST /manage/editions/{y}/volunteer-assignments` · `POST /manage/volunteer-assignments/{id}/reassign\|close` · participants: `GET /editions/{y}/volunteer/assignment` · `GET /editions/{y}/me/volunteer` | M4 ✅ (Phase 6) |
-| content & notices | `GET /public/content` · `GET /editions/{y}/content` · `PUT /admin\|manage/content/{id}` (+publish) · `POST /manage/editions/{y}/notices` · `POST /me/push-tokens` | M5 |
+| content & notices | public: `GET /public/editions/{y}/event` · `GET /public/editions/{y}/documents/{id}/link` · participants: `GET /editions/{y}/event` · `GET /editions/{y}/documents/{id}/link` · console: `GET\|POST /manage/editions/{y}/content` · `PUT /manage/content/{id}` · `POST /manage/content/{id}/publish\|discard-draft\|archive` · `GET /manage/content/{id}/versions` · `POST /manage/editions/{y}/documents` · `POST /manage/documents/{id}/archive` · `GET /manage/documents/{id}/link` · notices: `GET\|POST /manage/editions/{y}/notices` · `POST …/notices/preview` · `PUT /manage/notices/{id}` · `POST /manage/notices/{id}/withdraw` · `POST /manage/editions/{y}/notice-groups` · `POST\|DELETE /manage/notice-groups/{id}/members` · own: `POST\|DELETE /me/push-tokens` · `POST /me/notifications/{id}/read` | M5 ✅ (Phase 7) |
 | help desk & support | `POST /me/helpdesk/messages` · `POST /me/emergency` · `GET\|POST /webhooks/whatsapp` · `/support/tickets…` (assign, status, notes, escalate) | M7 |
 | reports & audit | `GET /manage/reports/{id}` · `GET /admin/audit` · exports | M2–M8 |
 
@@ -207,8 +207,8 @@ The registration website is never descoped.
 | B-15 | Jury assignments, rubric versions, live pitch control | TBD-20/21/43 | AT-16, AT-18 | M4 ✅ |
 | B-16 | Jury scoring (draft/submit/reopen) | B-15 | AT-17 | M4 ✅ |
 | B-17 | Volunteer generator (seeded), review, reassignment | TBD-22 | AT-19…23 | M4 ✅ |
-| B-18 | Content service + publish + documents | TBD-06, TBD-24 | AT-24 | M5 |
-| B-19 | Notices + push tokens + delivery tracking | B-18 | AT-25 | M5 |
+| B-18 | Content service + publish + documents | TBD-06, TBD-24 | AT-24 | M5 ✅ |
+| B-19 | Notices + push tokens + delivery tracking | B-18 | AT-25 | M5 ✅ |
 | B-20 | Expo app shell, auth, role home screens | B-06 | AT-01 (mobile) | M6 |
 | B-21 | App feature parity + offline cache | B-18, B-19 | AT-33 | M6 |
 | B-22 | Store listings, privacy labels, submission | TBD-36 | Approved in both stores | M6 |
@@ -264,10 +264,17 @@ The 10-phase delivery breakdown and its status are in [PHASES.md](PHASES.md). Ar
   - Management review per rubric version, with no winner; jury data kept apart from AI ranking and selection (no grants, no reads, tested);
   - seeded, reproducible one-to-one volunteer generation as a draft; shortages and surpluses listed; save, reassign, end and manual assignment with full history;
   - concurrency: every mutation locks the edition row, unique indexes and triggers back the rules; messages through the existing outbox with truthful status.
+- **Phase 7, event information and notices** (details in [PHASES.md](PHASES.md)):
+  - event information as versioned, audience-tagged content with drafts and publishing, split between Admin (source) and Management (operational);
+  - one published copy for the website and the app, official day labels, the tentative programme seeded as drafts, 112 always first;
+  - documents in private storage behind 60-second links after an audience check;
+  - notices to everyone, roles or authorised groups within one edition, in-app plus push, with delivery figures, audited corrections and withdrawals;
+  - Expo push with receipts and device clean-up; Supabase Storage adapter (both not yet verified live).
 - **Awaiting approval** (decisions in DECISIONS.md):
   - Import column set v1 (TBD-41).
   - Activation validity period: 72 h, configurable (TBD-13).
   - Criteria v1, override, correction and result-message policies and wording (TBD-01, -14, -18, -37).
+  - Publishing the tentative programme and final content (TBD-06, organisers); content ownership (TBD-24); notice channels and groups (TBD-29); document formats (TBD-51); push provider accounts (TBD-52); draft and correction rules (TBD-53).
   - Jury rubric v1, pitch assignment and rubric-change rules (TBD-20, -21, -43, -50); volunteer pool, roles, messages and shared contact fields (TBD-22, -23, -47, -48, -49).
 
 ### First vertical slice (M1)

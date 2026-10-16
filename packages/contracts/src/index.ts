@@ -582,7 +582,7 @@ export type DevSessionRequest = z.input<typeof DevSessionRequest>;
 // ---------------------------------------------------------------- post-sign-in redirects (open-redirect protection)
 /** Internal destinations each web interface may return to after sign-in or MFA. Anything else falls back. */
 export const WEB_RETURN_PATHS = ["/", "/register", "/status", "/activate", "/privacy"] as const;
-export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/jury", "/volunteers", "/users", "/imports"] as const;
+export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/jury", "/volunteers", "/content", "/notices", "/users", "/imports"] as const;
 
 const REDIRECT_BASE = "https://internal.invalid";
 
@@ -891,3 +891,217 @@ export const MyVolunteer = z.object({
   volunteer: z.object({ name: z.string(), mobile: z.string().nullable(), for: z.enum(["startup", "jury"]) }).nullable(),
 });
 export type MyVolunteer = z.infer<typeof MyVolunteer>;
+
+// ================================================================ Phase 7: event information (FR-EVT-*; TBD-06, -24, -51)
+// One official copy of the event information, served to the website and the app alike (FR-EVT-01, -02). Every edit
+// is a draft until published; each publish is a new version with editor, time and change summary (FR-EVT-16).
+
+export const CONTENT_TYPES = ["schedule_item", "venue", "meal", "accommodation", "travel", "safety_guideline", "emergency_contact", "page"] as const;
+export type ContentType = (typeof CONTENT_TYPES)[number];
+/** TBD-24: Admin maintains the official source information; Management maintains operational information. */
+export const SOURCE_CONTENT_TYPES: readonly ContentType[] = ["safety_guideline", "emergency_contact", "page"];
+export const OPERATIONAL_CONTENT_TYPES: readonly ContentType[] = ["schedule_item", "venue", "meal", "accommodation", "travel"];
+export const CONTENT_TYPE_LABEL: Record<ContentType, string> = {
+  schedule_item: "Schedule", venue: "Venues", meal: "Food", accommodation: "Accommodation", travel: "Travel and transport",
+  safety_guideline: "Safety guidelines", emergency_contact: "Emergency contacts", page: "Information pages",
+};
+
+/** Who sees an item or document (FR-EVT-17): the public, every participant of the edition, or participants in roles. */
+export const CONTENT_AUDIENCES = ["public", "participants", "startup_team_leader", "startup_team_member", "jury_member", "volunteer", "delegate"] as const;
+export type ContentAudience = (typeof CONTENT_AUDIENCES)[number];
+export const PARTICIPANT_ROLES = ["startup_team_leader", "startup_team_member", "jury_member", "volunteer", "delegate"] as const;
+export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number];
+export const AUDIENCE_LABEL: Record<ContentAudience, string> = {
+  public: "Public (website and app)", participants: "All participants", startup_team_leader: "Startup leaders",
+  startup_team_member: "Startup members", jury_member: "Jury members", volunteer: "Volunteers", delegate: "Delegates",
+};
+export const AudienceList = z.array(z.enum(CONTENT_AUDIENCES)).min(1).max(6)
+  .refine((a) => new Set(a).size === a.length, "Each audience once")
+  .refine((a) => !(a.includes("public") && a.length > 1) && !(a.includes("participants") && a.length > 1),
+    "Public or All participants already include everyone; choose it alone");
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date like 2026-12-18");
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a 24-hour time like 09:30");
+const text = (max: number) => z.string().trim().max(max);
+const timeOrder = (b: { startTime?: string | null; endTime?: string | null }) => !b.startTime || !b.endTime || b.endTime > b.startTime;
+
+export const ScheduleBody = z.object({
+  day: isoDay, startTime: hhmm.nullish(), endTime: hhmm.nullish(), venue: text(200).nullish(), details: text(2000).nullish(),
+  /** Shown as "Tentative" until Management confirms it (TBD-06). */
+  tentative: z.boolean().default(false),
+  /** Order within a day when times are not set. */
+  order: z.number().int().min(0).max(999).default(0),
+}).strict().refine(timeOrder, { message: "The end time must be after the start time", path: ["endTime"] });
+export const MealBody = z.object({
+  day: isoDay, meal: z.enum(["breakfast", "lunch", "dinner", "snacks", "other"]), startTime: hhmm.nullish(), endTime: hhmm.nullish(),
+  venue: text(200).nullish(), menu: z.array(text(200).min(1)).max(40).default([]), notes: text(1000).nullish(),
+}).strict().refine(timeOrder, { message: "The end time must be after the start time", path: ["endTime"] });
+/** OD-03: a static map link only (https), no maps SDK. */
+export const VenueBody = z.object({
+  address: text(300).nullish(), mapUrl: z.string().url().max(500).refine((u) => u.startsWith("https://"), "Use an https:// link").nullish(),
+  notes: text(2000).nullish(),
+}).strict();
+export const TextBody = z.object({ text: text(8000).min(1, "Write the information"), address: text(300).nullish() }).strict();
+export const EmergencyBody = z.object({
+  phone: z.string().trim().regex(/^\+?[0-9 -]{3,20}$/, "Use digits, optionally starting with +"), available: text(200).nullish(), notes: text(500).nullish(),
+}).strict();
+
+export function contentBodySchema(type: ContentType): z.ZodType<Record<string, unknown>> {
+  switch (type) {
+    case "schedule_item": return ScheduleBody as never;
+    case "meal": return MealBody as never;
+    case "venue": return VenueBody as never;
+    case "emergency_contact": return EmergencyBody as never;
+    default: return TextBody as never;
+  }
+}
+
+export const ContentCreate = z.object({
+  type: z.enum(CONTENT_TYPES), title: z.string().trim().min(1, "Give it a title").max(200), audience: AudienceList, body: z.record(z.string(), z.unknown()),
+});
+export type ContentCreate = z.infer<typeof ContentCreate>;
+export const ContentUpdate = ContentCreate.omit({ type: true });
+export type ContentUpdate = z.infer<typeof ContentUpdate>;
+export const PublishRequest = z.object({ changeSummary: z.string().trim().min(1, "Say what changed").max(500) });
+export const ArchiveRequest = z.object({ reason: z.string().trim().min(1, "Give the reason").max(500) });
+
+export const ContentDraft = z.object({ title: z.string(), body: z.record(z.string(), z.unknown()), audience: z.array(z.enum(CONTENT_AUDIENCES)) });
+export const ManagedContentItem = z.object({
+  id: z.string(), edition: z.number().int(), type: z.enum(CONTENT_TYPES), state: z.enum(["draft", "published", "archived"]),
+  version: z.number().int(),
+  /** What users see now (null if never published). */
+  live: ContentDraft.nullable(),
+  publishedAt: z.string().nullable(),
+  changeSummary: z.string().nullable(),
+  /** Pending edits, not visible to users until published. */
+  draft: ContentDraft.nullable(), draftBy: z.string().nullable(), draftAt: z.string().nullable(),
+  archivedAt: z.string().nullable(),
+  /** Whether the caller may edit this type (TBD-24). */
+  canEdit: z.boolean(),
+});
+export type ManagedContentItem = z.infer<typeof ManagedContentItem>;
+export const ContentVersion = z.object({
+  version: z.number().int(), title: z.string(), body: z.record(z.string(), z.unknown()), audience: z.array(z.string()),
+  changeSummary: z.string().nullable(), publishedBy: z.string().nullable(), publishedAt: z.string(),
+});
+export type ContentVersion = z.infer<typeof ContentVersion>;
+
+export const DOCUMENT_TYPES = { "application/pdf": "PDF", "image/png": "PNG image", "image/jpeg": "JPEG image" } as const;
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const DocumentUpload = z.object({
+  title: z.string().trim().min(1, "Give it a title").max(200), description: z.string().trim().max(500).optional(),
+  audience: AudienceList, fileName: z.string().trim().min(1).max(200),
+  contentType: z.enum(Object.keys(DOCUMENT_TYPES) as ["application/pdf", "image/png", "image/jpeg"]),
+  /** File content, base64. Checked against the declared type on the server. */
+  dataBase64: z.string().min(1).max(Math.ceil(MAX_DOCUMENT_BYTES / 3) * 4 + 4),
+  replacesId: z.string().uuid().optional(),
+});
+export type DocumentUpload = z.infer<typeof DocumentUpload>;
+export const EventDocument = z.object({
+  id: z.string(), title: z.string(), description: z.string().nullable(), fileName: z.string(), contentType: z.string(),
+  sizeBytes: z.number().int(), version: z.number().int(), uploadedAt: z.string(),
+});
+export type EventDocument = z.infer<typeof EventDocument>;
+export const ManagedDocument = EventDocument.extend({
+  edition: z.number().int(), audience: z.array(z.enum(CONTENT_AUDIENCES)), uploadedBy: z.string().nullable(),
+  replacesId: z.string().nullable(), archivedAt: z.string().nullable(), canEdit: z.boolean(),
+});
+export type ManagedDocument = z.infer<typeof ManagedDocument>;
+/** A short-lived link to one document (SEC-08). Open it at once; it stops working after `expiresAt`. */
+export const DocumentLink = z.object({ url: z.string(), expiresAt: z.string() });
+export type DocumentLink = z.infer<typeof DocumentLink>;
+
+/** Event days with their official labels (FR-EVT-03, AT-37): 17 Dec 2026 is the pre-event day. */
+export function eventDays(e: { preEventOn: string | null; eventStartsOn: string | null; eventEndsOn: string | null }) {
+  const first = e.preEventOn ?? e.eventStartsOn;
+  if (!first || !e.eventEndsOn) return [] as { date: string; label: string; preEvent: boolean }[];
+  const out: { date: string; label: string; preEvent: boolean }[] = [];
+  for (let d = new Date(`${first}T00:00:00Z`); d <= new Date(`${e.eventEndsOn}T00:00:00Z`); d = new Date(d.getTime() + 86_400_000)) {
+    const date = d.toISOString().slice(0, 10);
+    out.push({ date, label: dayLabel(date, date === e.preEventOn && e.preEventOn !== e.eventStartsOn), preEvent: date === e.preEventOn && e.preEventOn !== e.eventStartsOn });
+  }
+  return out;
+}
+export function dayLabel(date: string, preEvent: boolean): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const s = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(d);
+  return preEvent ? `${s} · Pre-event day` : s;
+}
+
+const PublishedItem = z.object({ id: z.string(), title: z.string(), version: z.number().int(), updatedAt: z.string() });
+export const EventInfo = z.object({
+  edition: z.object({ year: z.number().int(), name: z.string(), days: z.array(z.object({ date: z.string(), label: z.string(), preEvent: z.boolean() })) }),
+  schedule: z.array(z.object({ date: z.string(), label: z.string(), preEvent: z.boolean(),
+    items: z.array(PublishedItem.extend({ body: ScheduleBody })), meals: z.array(PublishedItem.extend({ body: MealBody })) })),
+  venues: z.array(PublishedItem.extend({ body: VenueBody })),
+  accommodation: z.array(PublishedItem.extend({ body: TextBody })),
+  travel: z.array(PublishedItem.extend({ body: TextBody })),
+  safety: z.array(PublishedItem.extend({ body: TextBody })),
+  /** 112 is always first (TBD-07); it is not editable content. */
+  emergency: z.array(z.object({ id: z.string().nullable(), title: z.string(), phone: z.string(), available: z.string().nullish(), notes: z.string().nullish() })),
+  pages: z.array(PublishedItem.extend({ body: TextBody })),
+  documents: z.array(EventDocument),
+  /** The most recent publish among what this viewer can see (FR-EVT-16 "last updated"). */
+  lastUpdated: z.string().nullable(),
+});
+export type EventInfo = z.infer<typeof EventInfo>;
+export const NATIONAL_EMERGENCY = { title: "National emergency number (police, fire, ambulance)", phone: "112" } as const;
+
+// ================================================================ Phase 7: notices and push (FR-NOT-*; TBD-29, -52)
+export const NoticeAudience = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("everyone") }),
+  z.object({ kind: z.literal("roles"), roles: z.array(z.enum(PARTICIPANT_ROLES)).min(1).max(5).refine((r) => new Set(r).size === r.length, "Each role once") }),
+  z.object({ kind: z.literal("group"), groupId: z.string().uuid() }),
+]);
+export type NoticeAudience = z.infer<typeof NoticeAudience>;
+export const NoticeCreate = z.object({
+  title: z.string().trim().min(1, "Give it a title").max(200), body: z.string().trim().min(1, "Write the notice").max(4000),
+  audience: NoticeAudience, sendPush: z.boolean().default(false),
+});
+export type NoticeCreate = z.input<typeof NoticeCreate>;
+export const NoticeEdit = z.object({
+  title: z.string().trim().min(1).max(200).optional(), body: z.string().trim().min(1).max(4000).optional(),
+  reason: z.string().trim().min(1, "Say why you are correcting it").max(500),
+}).refine((e) => e.title !== undefined || e.body !== undefined, "Change the title or the text");
+export type NoticeEdit = z.infer<typeof NoticeEdit>;
+export const NoticeWithdraw = z.object({ reason: z.string().trim().min(1, "Give the reason").max(500) });
+export const NoticePreview = z.object({ recipients: z.number().int(), withDevice: z.number().int(), devices: z.number().int() });
+export type NoticePreview = z.infer<typeof NoticePreview>;
+export const DeliveryCounts = z.object({ queued: z.number().int(), sent: z.number().int(), failed: z.number().int(), cancelled: z.number().int() });
+export const ManagedNotice = z.object({
+  id: z.string(), edition: z.number().int(), title: z.string(), body: z.string(), audience: NoticeAudience, audienceLabel: z.string(),
+  sendPush: z.boolean(), publishedBy: z.string(), publishedAt: z.string(), editedBy: z.string().nullable(), editedAt: z.string().nullable(),
+  withdrawnBy: z.string().nullable(), withdrawnAt: z.string().nullable(), withdrawReason: z.string().nullable(),
+  recipients: z.number().int(),
+  /** FR-NOT-04: in-app = in the inbox (read = opened); push = handed to the push service, which is not proof of delivery. */
+  delivery: z.object({ inApp: z.object({ total: z.number().int(), read: z.number().int() }), push: DeliveryCounts }),
+});
+export type ManagedNotice = z.infer<typeof ManagedNotice>;
+export const NoticeGroupCreate = z.object({ name: z.string().trim().min(1, "Name the group").max(100), description: z.string().trim().max(300).optional() });
+export const GroupMembersAdd = z.object({ userIds: z.array(z.string().uuid()).min(1).max(500) });
+export const ParticipantRef = z.object({ id: z.string(), fullName: z.string(), roles: z.array(z.enum(ROLES)) });
+export type ParticipantRef = z.infer<typeof ParticipantRef>;
+export const NoticeGroup = z.object({
+  id: z.string(), edition: z.number().int(), name: z.string(), description: z.string().nullable(), createdBy: z.string(), createdAt: z.string(),
+  members: z.array(ParticipantRef),
+});
+export type NoticeGroup = z.infer<typeof NoticeGroup>;
+export const NoticesOverview = z.object({
+  edition: z.number().int(), notices: z.array(ManagedNotice), groups: z.array(NoticeGroup), participants: z.array(ParticipantRef),
+});
+export type NoticesOverview = z.infer<typeof NoticesOverview>;
+export const PushTokenRegister = z.object({
+  token: z.string().regex(/^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,200}\]$/, "Not an Expo push token"), platform: z.enum(["android", "ios"]),
+});
+export type PushTokenRegister = z.infer<typeof PushTokenRegister>;
+
+/** The console's view of one edition's event information: everything, drafts included, with edit rights per type. */
+export const ContentOverview = z.object({
+  edition: z.number().int(),
+  days: z.array(z.object({ date: z.string(), label: z.string(), preEvent: z.boolean() })),
+  items: z.array(ManagedContentItem),
+  documents: z.array(ManagedDocument),
+  canEditSource: z.boolean(),
+  canEditOperational: z.boolean(),
+});
+export type ContentOverview = z.infer<typeof ContentOverview>;

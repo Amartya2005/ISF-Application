@@ -50,6 +50,13 @@ const Env = z.object({
   MSG91_TEMPLATE_CORRECTION: z.string().optional(),
   MSG91_TEMPLATE_ACTIVATION: z.string().optional(),
   MSG91_TEMPLATE_ASSIGNMENT: z.string().optional(),
+  // Phase 7: push notifications through the Expo push service (TBD-52) and document storage (TBD-51).
+  PUSH_PROVIDER: z.enum(["none", "log", "expo"]).default("none"),
+  EXPO_ACCESS_TOKEN: z.string().optional().or(z.literal("").transform(() => undefined)),
+  STORAGE_PROVIDER: z.enum(["database", "supabase"]).default("database"),
+  STORAGE_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,62}$/).default("event-documents"),
+  // Signs the short-lived document links of the database storage adapter. Random per process when unset.
+  FILE_LINK_SECRET: z.string().min(32).optional().or(z.literal("").transform(() => undefined)),
 });
 
 export type Config = {
@@ -72,6 +79,8 @@ export type Config = {
   ranking: { provider: "stub" | "vertex"; vertex?: { project: string; location: string; model: string; accessToken?: string; serviceAccount?: string } };
   email: { provider: "none" | "log" | "smtp"; smtp?: { host: string; port: number; user?: string; pass?: string; from: string } };
   sms: { provider: "none" | "log" | "msg91"; msg91?: { authKey: string; templates: Record<string, string | undefined> } };
+  push: { provider: "none" | "log" | "expo"; expoAccessToken?: string };
+  storage: { provider: "database" | "supabase"; bucket: string; fileLinkSecret?: string };
 };
 
 /**
@@ -93,6 +102,8 @@ export function productionBlockers(e: z.output<typeof Env>, privacyNoticeVersion
   if (e.NOTIFY_EMAIL_PROVIDER === "log" || e.NOTIFY_SMS_PROVIDER === "log") {
     blockers.push("NOTIFY_EMAIL_PROVIDER / NOTIFY_SMS_PROVIDER=log is for development only: it reports messages as sent without sending them");
   }
+  if (e.PUSH_PROVIDER === "log") blockers.push("PUSH_PROVIDER=log is for development only: it reports push messages as sent without sending them");
+  if (e.STORAGE_PROVIDER !== "supabase") blockers.push("STORAGE_PROVIDER must be supabase: the database adapter is for development only (TBD-51)");
   if (e.DEV_NOW) blockers.push("DEV_NOW must not be set in production");
   if (e.LAUNCH_APPROVED !== "true") {
     blockers.push("LAUNCH_APPROVED=true is not set: complete and sign off docs/LAUNCH_CHECKLIST.md (live Supabase staging tests, approved privacy text, remaining launch checks)");
@@ -124,6 +135,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
   }
   if (e.NOTIFY_EMAIL_PROVIDER === "smtp" && (!e.SMTP_HOST || !e.NOTIFY_EMAIL_FROM)) {
     throw new Error("SMTP_HOST and NOTIFY_EMAIL_FROM are required when NOTIFY_EMAIL_PROVIDER=smtp");
+  }
+  if (e.STORAGE_PROVIDER === "supabase" && (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_ROLE_KEY)) {
+    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_PROVIDER=supabase");
   }
   if (e.NOTIFY_SMS_PROVIDER === "msg91" && !e.MSG91_AUTH_KEY) throw new Error("MSG91_AUTH_KEY is required when NOTIFY_SMS_PROVIDER=msg91");
   return {
@@ -168,5 +182,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
           } }
         : undefined,
     },
+    push: { provider: e.PUSH_PROVIDER, expoAccessToken: e.EXPO_ACCESS_TOKEN },
+    storage: { provider: e.STORAGE_PROVIDER, bucket: e.STORAGE_BUCKET, fileLinkSecret: e.FILE_LINK_SECRET },
   };
 }

@@ -6,10 +6,29 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "ios": { "bundleIdentifier": "org.isf.startupjathara", "supportsTablet": false },
-    "android": { "package": "org.isf.startupjathara" },
-    "web": { "bundler": "metro", "output": "single" },
-    "plugins": ["expo-router", "expo-secure-store"],
-    "experiments": { "typedRoutes": false }
+    "ios": {
+      "bundleIdentifier": "org.isf.startupjathara",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "org.isf.startupjathara"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "notices"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

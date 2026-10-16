@@ -40,6 +40,7 @@ export default async function Home() {
         <div className="actions">
           <Link href="/register" className="btn btn-primary">Register your startup</Link>
           <Link href="/status" className="btn">Check application status</Link>
+          <Link href="/event" className="btn">Programme and event information</Link>
         </div>
       </section>
 

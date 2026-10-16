@@ -15,7 +15,8 @@ const identity = supabase
 const clock = () => config.devNow ?? new Date();
 const app = await buildApp({ config, sql, verifier, identity, clock });
 const stopWorkers = config.runWorkers
-  ? startWorkers({ sql, model: rankingModelFrom(config), senders: await sendersFrom(config, (m) => app.log.info(m)), clock, log: app.log })
+  ? startWorkers({ sql, model: rankingModelFrom(config), senders: await sendersFrom(config, (m) => app.log.info(m)), clock, log: app.log,
+      pushReceipts: config.push.provider === "expo" ? { accessToken: config.push.expoAccessToken } : undefined })
   : async () => {};
 
 const close = async () => {

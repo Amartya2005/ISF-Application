@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="container">
             <Link href="/" className="brand">Startup Jathara <span>@ Dandakaranya</span></Link>
             <nav className="nav" aria-label="Main">
+              <Link href="/event">Programme</Link>
               <Link href="/register">Register a startup</Link>
               <Link href="/status">Application status</Link>
               <AccountLink />

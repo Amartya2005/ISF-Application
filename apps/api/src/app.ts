@@ -8,6 +8,8 @@ import {
   RegistrationRequest, ReleaseRequest, ROLES, RoleGrantRequest, SelectionLimitRequest, StartRankingRunRequest,
   CloseAssignmentRequest, EvaluationSave, JuryAssignmentRequest, ManualAssignRequest, PitchSlotRequest, PitchSlotUpdate, ReassignRequest,
   ReopenRequest, RubricCreate,
+  ArchiveRequest, ContentCreate, ContentUpdate, DocumentUpload, GroupMembersAdd, NoticeAudience, NoticeCreate, NoticeEdit, NoticeGroupCreate,
+  NoticeWithdraw, PublishRequest, PushTokenRegister,
 } from "@sj/contracts";
 import { z } from "zod";
 import type { Config } from "./config.js";
@@ -15,7 +17,16 @@ import type { Sql } from "./db/client.js";
 import { getUser, grantRole, issueActivation, listUsers, me, redeemActivation, revokeRole, setStatus } from "./modules/accounts/service.js";
 import { listEditions, toPublic } from "./modules/editions/service.js";
 import { commitBatch, discardBatch, getBatch, listBatches, previewImport, templateCsv } from "./modules/imports/service.js";
-import { myNotifications } from "./modules/notifications/service.js";
+import { markRead, myNotifications } from "./modules/notifications/service.js";
+import {
+  archiveContent, archiveDocument, contentOverview, contentVersions, createContent, discardDraft, documentLink, eventInfo, publishContent,
+  updateContent, uploadDocument,
+} from "./modules/content/service.js";
+import { databaseStore, supabaseStore, type FileStore } from "./modules/content/storage.js";
+import {
+  addMembers, createGroup, editNotice, noticesOverview, previewNotice, publishNotice, registerPushToken, removeMember, removePushToken,
+  withdrawNotice,
+} from "./modules/notices/service.js";
 import { approveCriteriaSet, createCriteriaSet, getRun, listCriteriaSets, listRuns, setCutLine, startRun } from "./modules/ranking/service.js";
 import { myApplications, register, withdrawApplication } from "./modules/registration/service.js";
 import {
@@ -48,6 +59,8 @@ export type AppDeps = {
   rankingModelRef?: string;
   /** Channels with a configured provider, for automated activation delivery (TBD-13). Defaults from config. */
   automated?: { email: boolean; sms: boolean };
+  /** Document storage (TBD-51). Defaults from config. */
+  fileStore?: FileStore;
 };
 
 const Year = z.object({ year: z.coerce.number().int().min(2026).max(2100) });
@@ -59,6 +72,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const rankingModelRef = deps.rankingModelRef ?? rankingModelFrom(config).ref;
   const automated = deps.automated ?? automatedChannels(config);
   const webUrl = config.publicWebUrl;
+  const fileStore: FileStore = deps.fileStore ?? (config.storage.provider === "supabase"
+    ? supabaseStore({ url: config.supabaseUrl!, serviceRoleKey: config.supabaseServiceRoleKey!, bucket: config.storage.bucket })
+    : databaseStore(config.storage.fileLinkSecret));
   const app = Fastify({
     logger: deps.logger ?? { level: config.logLevel, redact: ["req.headers.authorization", "req.headers.cookie"] },
     trustProxy: true,
@@ -304,6 +320,78 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     async (req) => myAssignment(sql, principalOf(req), parse(Year, req.params).year));
   app.get("/v1/editions/:year/me/volunteer", { preHandler: [auth, requireEditionAccess(), requirePermission("volunteer.my_volunteer")] },
     async (req) => myVolunteer(sql, principalOf(req), parse(Year, req.params).year));
+
+  // ---------------------------------------------------------------- event information (Phase 7, FR-EVT-*; TBD-24)
+  // Public and participant views read the same published data (FR-EVT-01): the website and the app never differ.
+  app.get("/v1/public/editions/:year/event", async (req) => eventInfo(sql, { kind: "public" }, parse(Year, req.params).year));
+  app.get("/v1/public/editions/:year/documents/:id/link", async (req) => {
+    const { year, id } = parse(z.object({ year: Year.shape.year, id: z.string().uuid() }), req.params);
+    return documentLink(sql, { kind: "public" }, year, id, fileStore, now());
+  });
+  const participant = { preHandler: [auth, requireEditionAccess()] };
+  app.get("/v1/editions/:year/event", participant, async (req) =>
+    eventInfo(sql, { kind: "participant", userId: principalOf(req).account!.id }, parse(Year, req.params).year));
+  app.get("/v1/editions/:year/documents/:id/link", participant, async (req) => {
+    const { year, id } = parse(z.object({ year: Year.shape.year, id: z.string().uuid() }), req.params);
+    return documentLink(sql, { kind: "participant", userId: principalOf(req).account!.id }, year, id, fileStore, now());
+  });
+  // Console: both Admin and Management read everything; the service checks who may edit which type (TBD-24).
+  const cRead = { preHandler: [auth, requirePermission("content.read_all")] };
+  app.get("/v1/manage/editions/:year/content", cRead, async (req) => contentOverview(sql, principalOf(req), parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/content", cRead, async (req, reply) =>
+    reply.status(201).send(await createContent(sql, principalOf(req), parse(Year, req.params).year, parse(ContentCreate, req.body))));
+  app.put("/v1/manage/content/:id", cRead, async (req) => updateContent(sql, principalOf(req), parse(Id, req.params).id, parse(ContentUpdate, req.body)));
+  app.post("/v1/manage/content/:id/publish", cRead, async (req) =>
+    publishContent(sql, principalOf(req), parse(Id, req.params).id, parse(PublishRequest, req.body).changeSummary));
+  app.post("/v1/manage/content/:id/discard-draft", cRead, async (req) => discardDraft(sql, principalOf(req), parse(Id, req.params).id));
+  app.post("/v1/manage/content/:id/archive", cRead, async (req) =>
+    archiveContent(sql, principalOf(req), parse(Id, req.params).id, parse(ArchiveRequest, req.body).reason));
+  app.get("/v1/manage/content/:id/versions", cRead, async (req) => contentVersions(sql, parse(Id, req.params).id));
+  app.post("/v1/manage/editions/:year/documents", { ...cRead, bodyLimit: 15 * 1024 * 1024 }, async (req, reply) =>
+    reply.status(201).send(await uploadDocument(sql, principalOf(req), parse(Year, req.params).year, parse(DocumentUpload, req.body), fileStore)));
+  app.post("/v1/manage/documents/:id/archive", cRead, async (req) => {
+    await archiveDocument(sql, principalOf(req), parse(Id, req.params).id, parse(ArchiveRequest, req.body).reason);
+    return { archived: true };
+  });
+  app.get("/v1/manage/documents/:id/link", cRead, async (req) => documentLink(sql, { kind: "staff" }, null, parse(Id, req.params).id, fileStore, now()));
+  // Development storage only: the signed token in the path is the authorisation, valid for 60 seconds.
+  if (fileStore.name === "database") {
+    const store = fileStore as ReturnType<typeof databaseStore>;
+    app.get("/v1/files/:token", async (req, reply) => {
+      const t = store.verify((req.params as { token: string }).token, now());
+      if (!t) throw new AppError(404, "link_expired", "Link expired", "This link has expired. Open the document again.");
+      const f = await store.read(sql, t.id);
+      if (!f) throw new AppError(404, "not_found", "Not found", "File not found");
+      return reply.header("content-type", f.contentType)
+        .header("content-disposition", `inline; filename="${f.fileName.replace(/[^A-Za-z0-9._ -]/g, "_")}"`)
+        .header("cache-control", "private, no-store").header("x-content-type-options", "nosniff").send(f.bytes);
+    });
+  }
+
+  // ---------------------------------------------------------------- notices and push (Phase 7, FR-NOT-*; TBD-29, -52)
+  const nPub = { preHandler: [auth, requirePermission("notice.publish")] };
+  app.get("/v1/manage/editions/:year/notices", nPub, async (req) => noticesOverview(sql, parse(Year, req.params).year));
+  app.post("/v1/manage/editions/:year/notices/preview", nPub, async (req) =>
+    previewNotice(sql, parse(Year, req.params).year, parse(z.object({ audience: NoticeAudience }), req.body).audience));
+  app.post("/v1/manage/editions/:year/notices", nPub, async (req, reply) =>
+    reply.status(201).send(await publishNotice(sql, principalOf(req), parse(Year, req.params).year, parse(NoticeCreate, req.body), now())));
+  app.put("/v1/manage/notices/:id", nPub, async (req) => editNotice(sql, principalOf(req), parse(Id, req.params).id, parse(NoticeEdit, req.body)));
+  app.post("/v1/manage/notices/:id/withdraw", nPub, async (req) =>
+    withdrawNotice(sql, principalOf(req), parse(Id, req.params).id, parse(NoticeWithdraw, req.body).reason));
+  app.post("/v1/manage/editions/:year/notice-groups", nPub, async (req, reply) =>
+    reply.status(201).send(await createGroup(sql, principalOf(req), parse(Year, req.params).year, parse(NoticeGroupCreate, req.body))));
+  app.post("/v1/manage/notice-groups/:id/members", nPub, async (req) =>
+    addMembers(sql, principalOf(req), parse(Id, req.params).id, parse(GroupMembersAdd, req.body).userIds));
+  app.delete("/v1/manage/notice-groups/:id/members/:userId", nPub, async (req) => {
+    const { id, userId } = parse(z.object({ id: z.string().uuid(), userId: z.string().uuid() }), req.params);
+    return removeMember(sql, principalOf(req), id, userId);
+  });
+  const own = { preHandler: [auth, requirePermission("push.register_own")] };
+  app.post("/v1/me/push-tokens", own, async (req) => registerPushToken(sql, principalOf(req), parse(PushTokenRegister, req.body)));
+  app.delete("/v1/me/push-tokens", own, async (req) =>
+    removePushToken(sql, principalOf(req), parse(z.object({ token: z.string().max(300) }), req.body).token));
+  app.post("/v1/me/notifications/:id/read", { preHandler: [auth, requirePermission("notification.read_own")] }, async (req) =>
+    markRead(sql, principalOf(req).account!.id, parse(Id, req.params).id));
 
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {

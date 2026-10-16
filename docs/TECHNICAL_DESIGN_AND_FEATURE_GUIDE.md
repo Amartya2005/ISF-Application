@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Product** | Startup Jathara event platform for International Startup Foundation (ISF), built by Zeny2Labs |
-| **Covers** | Everything built up to and including **Phase 6** (commit `785a329`, 15 Oct 2026) |
+| **Covers** | Everything built up to and including **Phase 7** (commit `PHASE7SHA`, 16 Oct 2026) |
 | **Production status** | **NOT APPROVED.** Nothing is deployed to production. The API refuses a production start until [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. |
 | **Sources of truth** | The requirements document (`Startup_Jathara_Requirements_Revised_v4`) and the PRD (`ISF_Event_Operations_Platform_PRD_v0.1`). Every open point has a recorded decision in [DECISIONS.md](DECISIONS.md). |
 | **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
@@ -44,6 +44,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `805a0fc`, `9c3416e` | Every TBD decided; application form as edition configuration; 18+ declaration; selection-limit confirmation | — |
 | 15 Oct 2026 | `75dd860` | Phase 5: AI ranking, override reasons, two-person corrections, withdrawal, email/SMS outbox | — |
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
+| 16 Oct 2026 | `PHASE7SHA` | Phase 7: event information, documents, notices and push notifications | 1.1 |
 
 ---
 
@@ -55,10 +56,10 @@ The requirements describe **five interfaces on one system**:
 
 | Interface | Where it lives | Status |
 |---|---|---|
-| Public website | `apps/web` (Next.js) | Built: registration, status, activation, privacy notice |
-| Android and iOS app | `apps/mobile` (Expo, one codebase) | Built: sign-in, activation, home, registration, status, messages, jury, volunteers. Not yet in app stores. |
-| Admin dashboard | `apps/console` (Next.js), Admin sections | Built: accounts, imports |
-| Management dashboard | `apps/console`, Management sections | Built: applications, AI ranking, jury, volunteers |
+| Public website | `apps/web` (Next.js) | Built: programme and event information, registration, status, activation, privacy notice |
+| Android and iOS app | `apps/mobile` (Expo, one codebase) | Built: sign-in, activation, home, event information, registration, status, messages and notices (with push), jury, volunteers. Not yet in app stores. |
+| Admin dashboard | `apps/console` (Next.js), Admin sections | Built: accounts, imports, source event information and documents |
+| Management dashboard | `apps/console`, Management sections | Built: applications, AI ranking, jury, volunteers, operational event information, notices |
 | Customer Support dashboard | `apps/console`, Support sections | Not built yet (Phase 8) |
 
 The console is **one access-controlled web app** that shows each person only the sections their roles allow (ADR-001). The API enforces every permission; hiding a menu item is never a control.
@@ -75,8 +76,9 @@ The architecture is fixed by **ADR-001** ([ARCHITECTURE.md](ARCHITECTURE.md)). C
    Support)              │                                         ─────────────────────────▶  API: Fastify 5 modular monolith (apps/api)
  Android + iOS app ──────┘  Expo SDK 57 (apps/mobile)                                              │
                                                                                                     ├─ PostgreSQL (all data; rules as constraints and triggers)
- Identity: Supabase Auth (email/phone OTP, TOTP MFA) ── JWT ──▶ API verifies (JWKS)               ├─ Workers in the same codebase: AI ranking, email/SMS outbox
-                                                                                                    └─ Providers behind adapters: Vertex AI, SMTP (SES), MSG91
+ Identity: Supabase Auth (email/phone OTP, TOTP MFA) ── JWT ──▶ API verifies (JWKS)               ├─ Workers in the same codebase: AI ranking, email/SMS/push outbox
+                                                                                                    ├─ Private file storage: Supabase Storage (documents)
+                                                                                                    └─ Providers behind adapters: Vertex AI, SMTP (SES), MSG91, Expo push
 ```
 
 **Principles that every feature follows:**
@@ -96,10 +98,11 @@ The architecture is fixed by **ADR-001** ([ARCHITECTURE.md](ARCHITECTURE.md)). C
 | API | Fastify 5.12, postgres.js, Zod 4.6, `@fastify/rate-limit` |
 | Database | PostgreSQL 16 locally and in CI; Supabase PostgreSQL 17 on staging |
 | Website and console | Next.js 16.4, React 19.3 |
-| Mobile | Expo SDK 57 (React Native, expo-router), `expo-secure-store` |
+| Mobile | Expo SDK 57 (React Native, expo-router), `expo-secure-store`, `expo-notifications` |
 | Identity | Supabase Auth (email OTP, SMS OTP, TOTP MFA); a local development token mode |
 | AI ranking | Google Vertex AI adapter, plus a development stub that is **not an AI** |
-| Email / SMS | SMTP adapter (Amazon SES planned), MSG91 adapter (DLT templates) |
+| Email / SMS / push | SMTP adapter (Amazon SES planned), MSG91 adapter (DLT templates), Expo push service adapter (FCM/APNs) |
+| Files | Supabase Storage, private bucket, 60-second signed links (a database store for development only) |
 | Tests | Vitest on real PostgreSQL; Playwright (Python) browser flows |
 | CI | GitHub Actions (`.github/workflows/ci.yml`) |
 
@@ -116,17 +119,17 @@ apps/
       main.ts           API process; worker.ts: standalone worker process; workers.ts: worker loops
       db/               client.ts, migrate.ts (checksummed, forward-only), seed.ts (development only)
       platform/         auth.ts, principal.ts, permissions.ts, audit.ts, errors.ts, csv-export.ts
-      modules/          accounts, editions, imports, registration, selection, ranking, notifications, jury, volunteers
+      modules/          accounts, editions, imports, registration, selection, ranking, notifications, jury, volunteers, content, notices
     scripts/            ranking-eval.ts, staging-verify.ts, staging-guard.ts, totp.ts
     test/               Vitest suites (one fresh database per file)
-  web/          public website (register, status, activate, sign-in, privacy)
-  console/      Admin and Management console (applications, ranking, jury, volunteers, users, imports, MFA)
-  mobile/       Expo app (sign-in, activation, home, register, status, messages, jury, volunteer)
+  web/          public website (programme, register, status, activate, sign-in, privacy)
+  console/      Admin and Management console (applications, ranking, jury, volunteers, event info, notices, users, imports, MFA)
+  mobile/       Expo app (sign-in, activation, home, event information, register, status, messages, jury, volunteer; push registration)
 packages/
   contracts/    Zod schemas and shared pure functions (statuses, score checks, totals, safe redirects)
   client/       typed HTTP client used by every interface
   web-session/  browser sign-in shared by website and console (dev tokens or Supabase OTP + MFA)
-db/migrations/  0001…0010, forward-only SQL
+db/migrations/  0001…0011, forward-only SQL
 scripts/        dev-db.sh (local PostgreSQL) and the browser end-to-end flows (e2e_*.py)
 docs/           design, decisions, phases, launch checklist, staging, this guide
 ```
@@ -161,15 +164,15 @@ Default deny: each route names one permission (`requirePermission`), and partici
 
 | Role | Permissions |
 |---|---|
-| Any signed-in user | `registration.submit`, `application.read_own`, `application.withdraw_own`, `notification.read_own` |
-| `admin` | `import.manage`, `user.read`, `user.manage`, `role.assign`, `activation.issue`, `volunteer.read`, `volunteer.generate` |
-| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign` |
+| Any signed-in user | `registration.submit`, `application.read_own`, `application.withdraw_own`, `notification.read_own`, `push.register_own` |
+| `admin` | `import.manage`, `user.read`, `user.manage`, `role.assign`, `activation.issue`, `volunteer.read`, `volunteer.generate`, `content.read_all`, `content.manage_source` |
+| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign`, `content.read_all`, `content.manage_operational`, `notice.publish` |
 | `startup_team_leader` | `volunteer.my_volunteer` |
 | `jury_member` | `jury.evaluate`, `volunteer.my_volunteer` |
 | `volunteer` | `volunteer.my_assignment` |
-| `startup_team_member`, `delegate`, `customer_support` | none yet (their features come in Phases 7–8) |
+| `startup_team_member`, `delegate`, `customer_support` | no role-specific permissions yet. Members and delegates use the event information and notices their edition access and audiences allow; Customer Support comes in Phase 8 |
 
-The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Source: `apps/api/src/platform/permissions.ts`.
+The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Event information is split by type (TBD-24): `content.manage_source` covers documents, emergency contacts, safety guidelines and pages; `content.manage_operational` covers the schedule, venues, food, accommodation and travel. The service checks the type on every write. Source: `apps/api/src/platform/permissions.ts`.
 
 ### 4.4 Audit
 
@@ -184,7 +187,8 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 `apps/api/src/config.ts` parses the environment. With `NODE_ENV=production` the API **refuses to start** unless:
 - `AUTH_MODE=supabase`, staff MFA on, `CORS_ORIGINS` HTTPS-only;
 - the privacy notice version is not a draft;
-- `RANKING_PROVIDER=vertex` (not the stub), no `log` message provider, no `DEV_NOW`;
+- `RANKING_PROVIDER=vertex` (not the stub), no `log` message or push provider, no `DEV_NOW`;
+- `STORAGE_PROVIDER=supabase` (the database document store is for development only);
 - `LAUNCH_APPROVED=true`, a human attestation set only after [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. It is never set in staging, CI, `.env.example` or `.env`.
 
 ### 4.7 Other protections
@@ -196,6 +200,8 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 | Open redirects | Any return path from a URL goes through `safeReturnPath` with an allow-list (`WEB_RETURN_PATHS`, `CONSOLE_RETURN_PATHS`). |
 | CSV/formula injection | Imports reject formula prefixes; any export must use `platform/csv-export.ts`. |
 | Rate limits | Registration and activation are rate-limited per minute (configurable). |
+| Files | Uploads are checked against their declared type (PDF, PNG, JPEG; 10 MB). Files are never public: a viewer gets a 60-second link after an audience check; a document outside their audience is "not found". |
+| Untrusted text | Event information and notices are shown as plain text, never as HTML; map links must be `https://`. |
 | Time | All dates are shown in IST (Asia/Kolkata). `DEV_NOW` pins the clock in local development only. |
 
 ---
@@ -214,9 +220,11 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 | AI ranking | `criteria_sets`, `ranking_runs`, `ranking_results` | Approved criteria frozen; runs use an approved set of their own edition |
 | Jury | `scoring_rubrics`, `jury_assignments`, `evaluations`, `pitch_slots` | Approved rubrics frozen; submitted evaluations locked (DC-10); one live pitch and one slot per startup per edition |
 | Volunteers | `assignment_runs`, `volunteer_assignments` | Exactly one target per assignment; one open assignment per volunteer and per target (DC-04…06); history never overwritten (DC-07); one draft run per edition |
-| Messages | `notifications` | In-app and outbox (email, SMS) with status and idempotency key |
+| Event information | `content_items`, `content_versions`, `documents`, `document_blobs` (development store only) | Live content changes only by publishing a new version; versions append-only; schedule and meal days within the event days; documents replaced, never edited; nothing deleted |
+| Notices and push | `notices`, `notice_groups`, `notice_group_members`, `push_tokens` | A notice keeps its audience, edition and push choice; withdrawn notices are final; group members must take part in the edition; one account per device token |
+| Messages | `notifications` | In-app and outbox (email, SMS, push) with status (`queued`, `sent`, `failed`, `cancelled`), provider reference, receipt check and idempotency key; notice rows link to their notice |
 | Audit | `audit_events` | Append-only (DC-13) |
-| Later phases (tables exist, features not built) | `content_items`, `documents`, `notices`, `push_tokens`, `helpdesk_conversations`, `helpdesk_messages`, `support_tickets`, `ticket_events` | Integrity rules already enforced and tested (DC-08, DC-11) |
+| Later phases (tables exist, features not built) | `helpdesk_conversations`, `helpdesk_messages`, `support_tickets`, `ticket_events` | Integrity rules already enforced and tested (DC-08, DC-11) |
 
 ### 5.2 Migrations
 
@@ -234,6 +242,7 @@ Migrations are **forward-only and checksummed**: `migrate.ts` refuses to run if 
 | `0008_ranking_selection.sql` | AI ranking, ranking worker role, override reasons, corrections, withdrawal, outbox | ✅ |
 | `0009_ranking_worker_set_role.sql` | Let the non-superuser API role `SET ROLE sj_ranking_worker` | ✅ |
 | `0010_jury_volunteers.sql` | Jury and volunteer rules, rubric v1 draft, history | ✅ (15 Oct 2026) |
+| `0011_event_content_notices.sql` | Event information drafts and versions, documents, groups, notice rules, push devices and delivery, tentative 2026 programme (drafts) | ❌ not yet (applied with the staging deployment) |
 
 How to apply to staging is in [STAGING.md](STAGING.md).
 
@@ -248,7 +257,7 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 - **Status:** built.
 - `GET /v1/public/editions` returns each edition with dates and a **server-computed** registration window, plus the application form questions.
 - 2026 registration closes **5 Nov 2026, 23:59:59 IST, inclusive** (TBD-11). 2027 stays open until Management sets a deadline (TBD-05).
-- The website (`apps/web`) has: home, registration, status, sign-in, activation and the draft privacy notice. Privacy text is a draft awaiting Legal (TBD-32).
+- The website (`apps/web`) has: home, programme and event information (Phase 7), registration, status, sign-in, activation and the draft privacy notice. Privacy text is a draft awaiting Legal (TBD-32).
 
 ### 6.2 Startup registration
 
@@ -291,7 +300,8 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 ### 6.6 Mobile app
 
 - **Status:** built for Android, iOS and web export; **not submitted to stores** (needs organisation-owned accounts, TBD-36).
-- Screens: sign-in (email or mobile), activation, role-aware home, registration, per-year status and withdrawal, messages, jury (Phase 6), volunteer (Phase 6). Staff are pointed to the console.
+- Screens: sign-in (email or mobile), activation, role-aware home, event information (Phase 7), registration, per-year status and withdrawal, messages and notices with read marking (Phase 7), jury (Phase 6), volunteer (Phase 6). Staff are pointed to the console.
+- **Push** (Phase 7): after sign-in the app asks for notification permission and registers its Expo push token; sign-out removes it. Needs a development or store build with an EAS project; it quietly does nothing in web builds, simulators and Expo Go on Android.
 - **Not built:** sign-out on the first launch after a reinstall (OD-02). Required before store submission.
 - **Tests:** `apps/mobile/lib/*.test.ts` (keychain chunking, scoring helpers); browser: `e2e_mobile.py`, `e2e_jury_volunteers.py`; real devices: [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run on live staging).
 
@@ -307,16 +317,17 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 - **Console:** AI ranking page (criteria, approval, runs) and run page (ranks, criterion scores, explanations, flags, cut line).
 - **Tests:** `ranking.test.ts`, `ranking-model.test.ts`, `ranking-eval.test.ts`, `ranking-role-grant.test.ts`; browser: `e2e_ranking.py`.
 
-### 6.8 Messages: in-app and the email/SMS outbox
+### 6.8 Messages: in-app and the email/SMS/push outbox
 
-- **Status:** built; live providers not verified (TBD-35).
+- **Status:** built; live providers not verified (TBD-35, TBD-52).
 - **In-app** notices are written with status `sent` (they are in the inbox at once).
 - **Email/SMS** messages are written to the `notifications` outbox **in the same transaction** as the event that causes them, then delivered by the worker with retries (up to 6 attempts with backoff). One message per person: email if they have one, otherwise SMS.
 - **Truthful status:** without a configured provider a message stays `queued`; it is never reported as sent. Management sees each message's status.
 - SMS uses DLT templates by id (`MSG91_TEMPLATE_*`) and carries no outcome, only a prompt to sign in. A missing template id fails the message rather than sending something else. Activation codes are scrubbed from the outbox after delivery.
+- **Push** (Phase 7) uses the same outbox: one row per device, sent through the Expo push service. "Sent" means Expo accepted it (a ticket); the worker checks the receipt about 15 minutes later and marks failures; a device that no longer exists fails at once and is disabled. A notice withdrawn before sending cancels its queued pushes (`cancelled`).
 - Idempotency keys make re-sends harmless.
 - Message wording is **draft** (TBD-14, TBD-48).
-- **Tests:** `outbox.test.ts`, plus status checks in selection, correction and volunteer tests.
+- **Tests:** `outbox.test.ts`, `notices.test.ts`, plus status checks in selection, correction and volunteer tests.
 
 ### 6.9 Jury evaluation (Phase 6)
 
@@ -348,6 +359,41 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 - **Console:** Volunteers page (generate, draft review with shortage and surplus, save, current assignments with message statuses, reassign, end, assign by hand, history, runs). **App:** "My volunteer assignment" and "My volunteer".
 - **Tests:** `volunteers.test.ts` (28 cases including shuffle unit tests and concurrency), `schema.test.ts`; browser: `e2e_jury_volunteers.py`.
 
+### 6.11 Event information (Phase 7)
+
+- **Status:** built (API, console, website, app).
+- **Types:** schedule items (day, start and end time, venue, details, "tentative", order), venues (address, https map link, notes), food (day, meal, times, venue, menu), accommodation, travel, safety guidelines, emergency contacts and information pages. Each body is validated by type; unknown fields are refused.
+- **Who edits** (TBD-24): the Admin edits safety guidelines, emergency contacts and pages; Management edits the schedule, venues, food, accommodation and travel. Both read everything in the console. Enforced per type on the server (`403 content_not_yours`).
+- **Drafts and versions** (FR-EVT-16, TBD-53): every edit is a draft that nobody else sees; publishing needs a change summary and creates version n+1 (who, when, what changed); drafts can be discarded; items are archived, never deleted. A trigger allows the live version to change only by a publish.
+- **Audiences** (FR-EVT-17): public, all participants of the edition, or participant roles. The website shows public items; the app shows public items plus what the person's edition access and roles allow.
+- **One copy everywhere** (FR-EVT-01, -02, AT-24): website and app read the same published data with a "last updated" time; a change needs no release.
+- **Dates** (FR-EVT-03, AT-37): days come from the edition, with 17 December 2026 labelled "Pre-event day". Days outside the event are refused (API and trigger).
+- **Seeded programme** (TBD-06): the RQ §2 programme as unpublished drafts marked "Tentative", with no invented times or venues.
+- **Emergency** (TBD-07): 112 is always first, not editable; the Admin adds venue numbers.
+- **Console:** Event info page (type tabs, drafts, publish with summary, history, archive). **Website:** Programme page. **App:** Event information screen with tap-to-call.
+- **Tests:** `content.test.ts`; browser: `e2e_event_notices.py`.
+
+### 6.12 Documents (Phase 7)
+
+- **Status:** built; the Supabase Storage bucket is not yet verified live (TBD-51).
+- The Admin uploads PDF, PNG or JPEG files up to 10 MB with a title, description and audience. The server checks the file's first bytes against its type and records its size and SHA-256.
+- A new version replaces the old one (the old one is archived and kept); documents are never edited (trigger).
+- Viewers get a **60-second link** after an audience check (`GET …/documents/:id/link`); an out-of-audience, archived or other-edition document is "not found". Staff can open any document from the console.
+- Storage adapters: `supabase` (private bucket, signed URLs) for staging and production; `database` for development and tests, whose links are signed by the API (`/v1/files/<id>.<expiry>.<signature>`) and refused in production.
+- **Tests:** `content.test.ts` (including the Supabase request format); browser: `e2e_event_notices.py`.
+
+### 6.13 Notices and push notifications (Phase 7)
+
+- **Status:** built; push not verified on real devices (TBD-52).
+- **Audiences** (FR-NOT-01, TBD-29): everyone taking part in the edition, one or more participant roles, or one authorised group. Recipients are worked out on the server within the edition: unrevoked access, a matching role or membership, not deactivated (FR-NOT-05, AT-09). Staff and applicants without access get nothing. An audience with nobody in it is refused.
+- **Before publishing:** Management checks the recipient count and how many have the app with notifications on.
+- **Delivery** (FR-NOT-02, -04): each recipient gets an in-app notice; with push, one push per device registered at that moment. The console shows inbox reach and opens, and push status per device.
+- **Corrections and withdrawals** (FR-NOT-06, TBD-53): the text can be corrected with a reason (inboxes and unsent pushes show the new text); the audience cannot change. A withdrawal hides the notice from inboxes and cancels unsent pushes. Both are audited; notices are never deleted (trigger).
+- **Authorised groups** (FR-NOT-08): named per edition by Management; only participants of the edition can be members (API and trigger).
+- **Devices:** the app registers its token after sign-in (`POST /v1/me/push-tokens`) and removes it at sign-out; a token belongs to the account last signed in on that device.
+- **Console:** Notices page (compose, recipient check, delivery figures, correct, withdraw, groups). **App:** notices in Messages, marked read when opened.
+- **Tests:** `notices.test.ts` (17 cases including Expo request format, receipts and permanent failures); browser: `e2e_event_notices.py`.
+
 ---
 
 ## 7. API reference
@@ -364,6 +410,11 @@ All routes are under `/v1`, JSON, with a Bearer token unless marked public. Guar
 | GET | `/v1/me/applications` | `application.read_own` |
 | POST | `/v1/me/applications/:id/withdraw` | `application.withdraw_own` |
 | GET | `/v1/me/notifications` | `notification.read_own` |
+| POST | `/v1/me/notifications/:id/read` | `notification.read_own` (own messages only) |
+| POST / DELETE | `/v1/me/push-tokens` | `push.register_own` |
+| GET | `/v1/public/editions/:year/event`, `/v1/public/editions/:year/documents/:id/link` | public (public items only) |
+| GET | `/v1/editions/:year/event`, `/v1/editions/:year/documents/:id/link` | auth + edition (filtered by audience) |
+| GET | `/v1/files/:token` | the signed token (development document store only) |
 | GET | `/v1/me` | auth (pending accounts allowed) |
 | POST | `/v1/me/activation` | auth, pending account (rate-limited) |
 | GET | `/v1/editions/:year/me` | auth + edition |
@@ -432,13 +483,31 @@ All routes are under `/v1`, JSON, with a Bearer token unless marked public. Guar
 | GET | `/v1/editions/:year/volunteer/assignment` | `volunteer.my_assignment` + edition |
 | GET | `/v1/editions/:year/me/volunteer` | `volunteer.my_volunteer` + edition |
 
+### Event information and documents (Admin and Management)
+
+| Method | Path | Guard |
+|---|---|---|
+| GET | `/v1/manage/editions/:year/content`, `/v1/manage/content/:id/versions`, `/v1/manage/documents/:id/link` | `content.read_all` |
+| POST / PUT | `/v1/manage/editions/:year/content`, `/v1/manage/content/:id` | `content.read_all` + edit right for the type (TBD-24) |
+| POST | `/v1/manage/content/:id/publish`, `/discard-draft`, `/archive` | `content.read_all` + edit right for the type |
+| POST | `/v1/manage/editions/:year/documents`, `/v1/manage/documents/:id/archive` | `content.read_all` + `content.manage_source` |
+
+### Notices (Management)
+
+| Method | Path | Permission |
+|---|---|---|
+| GET / POST | `/v1/manage/editions/:year/notices`, `/v1/manage/editions/:year/notices/preview` | `notice.publish` |
+| PUT | `/v1/manage/notices/:id` (correct text, reason required) | `notice.publish` |
+| POST | `/v1/manage/notices/:id/withdraw` | `notice.publish` |
+| POST / DELETE | `/v1/manage/editions/:year/notice-groups`, `/v1/manage/notice-groups/:id/members`, `/v1/manage/notice-groups/:id/members/:userId` | `notice.publish` |
+
 Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `packages/client/src/index.ts`.
 
 ---
 
 ## 8. Background workers
 
-- Two loops: **AI ranking runs** and the **email/SMS outbox**. The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
+- Three jobs: **AI ranking runs**, the **email/SMS/push outbox**, and (with `PUSH_PROVIDER=expo`) an **Expo receipt check** about once a minute. The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
 - They run inside the API process (`RUN_WORKERS=true`) or as a separate process (`pnpm --filter @sj/api start:worker`) for hosts that throttle CPU between requests.
 - At start-up the workers check that the database user can switch to `sj_ranking_worker` and log an error if not (the problem migration 0009 fixed on staging).
 
@@ -448,17 +517,17 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 
 | Layer | What | Where |
 |---|---|---|
-| API integration and unit | Vitest on **real PostgreSQL**, a fresh database per test file. Every permission and rule has a test; tests cite PRD acceptance tests (AT-xx). | `apps/api/test/*.test.ts` (23 files) |
+| API integration and unit | Vitest on **real PostgreSQL**, a fresh database per test file. Every permission and rule has a test; tests cite PRD acceptance tests (AT-xx). | `apps/api/test/*.test.ts` (25 files) |
 | Mobile unit | Pure app logic: keychain chunking, scoring helpers | `apps/mobile/lib/*.test.ts` |
 | Browser end-to-end | Playwright (Python) against the real API, website, console and the app's web build | `scripts/e2e_*.py` |
-| Real devices | Session, refresh, sign-out and MFA checks on Android and iOS | [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run against live staging) |
+| Real devices | Session, refresh, sign-out, MFA, push and event-information checks on Android and iOS (D1–D14) | [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run against live staging) |
 | Staging server side | OTP sessions, refresh, revocation, linking refusal, TOTP | `pnpm --filter @sj/api staging:verify` (needs staging secrets; not yet run) |
 
-**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database). Run commands are in the README.
+**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database), `e2e_event_notices.py` (event information, documents and notices across console, website and app; needs a freshly seeded database). Run commands are in the README.
 
 **CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows run locally, not in CI.
 
-**Last recorded verification (15 Oct 2026, commit `785a329`):** 346 of 346 API tests and 8 of 8 mobile tests passed; typecheck, builds and the mobile web export passed; all 8 browser flows passed against fresh databases; GitHub Actions run 38745666548 passed.
+**Last recorded verification (16 Oct 2026, commit `PHASE7SHA`):** 384 of 384 API tests and 8 of 8 mobile tests passed; typecheck, builds and the mobile web export passed; all 9 browser flows passed against fresh databases; GitHub Actions run PHASE7CI.
 
 ---
 
@@ -481,7 +550,7 @@ Development staff sign-ins (dev mode only): `manager@dev.local`, `manager2@dev.l
 
 ### 10.2 Staging and production
 
-- **Staging:** Supabase project `startup-jathara-staging` (ref `chiafggvergjwliqvlwv`, ISF organisation, Mumbai, PostgreSQL 17). Migrations 0001–0010 are applied with matching checksums. The API, website and console are **not hosted yet**; secrets and auth settings are still to be configured. Details and remaining steps: [STAGING.md](STAGING.md). The staging verifier only accepts approved project refs.
+- **Staging:** Supabase project `startup-jathara-staging` (ref `chiafggvergjwliqvlwv`, ISF organisation, Mumbai, PostgreSQL 17). Migrations 0001–0010 are applied with matching checksums; 0011 (Phase 7) is not applied yet, and the private document bucket does not exist yet. The API, website and console are **not hosted yet**; secrets and auth settings are still to be configured. Details and remaining steps: [STAGING.md](STAGING.md). The staging verifier only accepts approved project refs.
 - **Production:** does not exist. Recommended hosting (TBD-46, awaiting budget): Cloud Run asia-south1 for the API and workers, Vercel for the web apps, Supabase ap-south-1. Accounts must be organisation-owned (TBD-36).
 
 ### 10.3 Environment variables
@@ -499,6 +568,8 @@ Development staff sign-ins (dev mode only): `manager@dev.local`, `manager2@dev.l
 | `RANKING_PROVIDER`, `RANKING_VERTEX_PROJECT`, `RANKING_VERTEX_LOCATION`, `RANKING_VERTEX_MODEL`, `RANKING_VERTEX_ACCESS_TOKEN`, `RANKING_VERTEX_SERVICE_ACCOUNT` | AI ranking provider |
 | `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox (`none` keeps messages queued) |
 | `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION`, `MSG91_TEMPLATE_ASSIGNMENT` | SMS outbox with DLT template ids |
+| `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` | Push for notices: `none`, `log` (development only, refused in production) or `expo`. The access token is a server-side secret |
+| `STORAGE_PROVIDER`, `STORAGE_BUCKET`, `FILE_LINK_SECRET` | Documents: `database` (development only, refused in production) or `supabase` (private bucket, default `event-documents`). `FILE_LINK_SECRET` signs the development store's links |
 | `DEV_NOW` | Development only: pins the API clock |
 | `LAUNCH_APPROVED` | Production launch attestation. Never set outside production, and only after sign-off |
 | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AUTH_MODE`, `NEXT_PUBLIC_SIGNIN_METHODS`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Website and console (public values only) |
@@ -518,6 +589,7 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 | Messages | TBD-13 (activation delivery), TBD-14 (result channels), TBD-48 (volunteer messages) |
 | Jury | TBD-20, TBD-21, TBD-43, TBD-50 |
 | Volunteers | TBD-22, TBD-23, TBD-47, TBD-49 |
+| Event information and notices | TBD-06 (tentative programme as drafts), TBD-07 (112 first), TBD-24 (who edits what), TBD-29 (in-app plus push, groups), TBD-51 (documents), TBD-52 (Expo push), TBD-53 (drafts, corrections, push timing) |
 | Imports | TBD-41 (column set v1) |
 
 ---
@@ -526,12 +598,13 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 
 | Item | Phase | Blocked on |
 |---|---|---|
-| Event information, notices and push notifications | 7 | Final schedule and content (TBD-06, TBD-24) |
 | AI Help Desk (app and WhatsApp), Customer Support dashboard, emergency escalation | 8 | WhatsApp onboarding; TBD-07, TBD-27, TBD-28 |
 | Offline cache, reports and exports, audit view | 9 | TBD-31 |
 | Security review, load test, restore drill, store submission, production release | 10 | Accounts (TBD-36), budget (TBD-46) |
 | Sign-out after app reinstall (OD-02) | before store submission | — |
 | Live Vertex AI, Amazon SES and MSG91 (with DLT templates) | — | Vendor accounts and contracts (TBD-35) |
+| Live push on real devices; private Supabase Storage bucket on staging | — | EAS project and FCM/APNs credentials under organisation accounts (TBD-36, TBD-52); staging deployment (STAGING.md) |
+| Publishing the final programme and venue emergency numbers | — | Organisers (TBD-06, TBD-07) |
 | Hosted staging, `staging:verify` and the device protocol on live staging | — | Staging secrets and hosting (STAGING.md) |
 | Approved privacy notice | — | Legal (TBD-32) |
 | QR check-in, meal tracking, room allocation | not planned for 2026 | TBD-30 |

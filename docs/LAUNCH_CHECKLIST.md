@@ -51,6 +51,8 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 - [ ] A ranking run on staging with the real model over a synthetic cohort completes. Results look sensible to a Management reviewer, and steering attempts are flagged.
 - [ ] **Result and activation email through Amazon SES**: a release and an activation code reach Gmail, Outlook and an institutional inbox, not spam, and show as `sent` in the console. SES production access granted; SPF, DKIM and DMARC pass.
 - [ ] **Result and activation SMS through MSG91**: DLT templates for the result, correction and activation messages are registered and their ids configured. Messages arrive on Jio, Airtel, Vi and BSNL. Failures show as `failed` in the console after the retries.
+- [ ] **Document storage** (TBD-51): a **private** Supabase Storage bucket `event-documents` exists (not public); the API runs with `STORAGE_PROVIDER=supabase`. An Admin uploads a jury-only PDF; a juror opens it through the app; a volunteer and the public get "not found"; a copied link stops working after 60 seconds.
+- [ ] **Push notifications** (TBD-52): an EAS project with FCM credentials and an APNs key under the organisation's accounts; `PUSH_PROVIDER=expo` (and `EXPO_ACCESS_TOKEN` if enhanced push security is on). With development or store builds on a real Android phone and a real iPhone: a jury-only notice arrives as a push on a juror's phone and not on a volunteer's; the console shows it as handed to the push service; uninstalling the app leads to a `failed` receipt and the device being disabled.
 
 ## C. Decision approvals ([docs/DECISIONS.md](/docs/DECISIONS.md))
 
@@ -70,6 +72,7 @@ Every TBD now has a recommended decision, and the code follows it. **None has be
 - [ ] **Management, before results are released (by 20 Nov, TBD-40):** criteria set approved by 6 Nov (TBD-01); result channels and wording (TBD-14); override reasons (TBD-18); correction and withdrawal policy (TBD-37), with the correction process built; scores never shared (TBD-44).
 - [ ] **Management, later phases:** TBD-05, TBD-10, TBD-17, TBD-29, TBD-42.
 - [ ] **Management, before the event (jury and volunteers, built in Phase 6):** approve a jury rubric version in the console (TBD-43; jurors cannot score until then) and the rubric-change rule (TBD-50); pitch assignment and the "currently pitching" operators (TBD-20, TBD-21); volunteer pool, roles and reassignment rules (TBD-22, TBD-23, TBD-47); assignment message wording and a registered DLT template for `MSG91_TEMPLATE_ASSIGNMENT` (TBD-48); the contact fields shared between volunteers and targets, also for the privacy notice (TBD-49, with Legal).
+- [ ] **Organisers and Management, before event information goes live (built in Phase 7):** review and publish the seeded tentative programme, then keep it current (TBD-06); content ownership (TBD-24); document formats and size (TBD-51); notice channels and authorised groups (TBD-29); draft, correction and push-timing rules (TBD-53); push provider and its accounts (TBD-52, TBD-36). The Admin publishes the venue emergency numbers (TBD-07).
 - [ ] **Budget:** hosting and budget ceiling (TBD-46), PITR windows and service targets (TBD-33), vendor contracts and DPAs (TBD-35).
 
 ## D. Security and operations
@@ -102,7 +105,8 @@ Only when every row above is filled in: set `LAUNCH_APPROVED=true` in the produc
 - staff MFA is on;
 - `CORS_ORIGINS` is HTTPS-only;
 - the privacy notice version is not a draft;
-- `RANKING_PROVIDER=vertex` (not the stub), no `log` message provider, no `DEV_NOW`;
+- `RANKING_PROVIDER=vertex` (not the stub), no `log` message or push provider, no `DEV_NOW`;
+- `STORAGE_PROVIDER=supabase` (the database document store is for development only);
 - `LAUNCH_APPROVED=true`.
 
 It **cannot** check that the operational items above have evidence and signatures. `LAUNCH_APPROVED` is therefore a human attestation, and it must be tightly controlled:

@@ -25,7 +25,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-03 | Shortfalls are handled as RQ §9 confirms: unassigned targets are listed, never doubled up. | Resolved by design |
 | TBD-04 | Delegates get information only for 2026 (accommodation, travel, programme). No room allocation, travel booking or check-in module. | Default — awaiting Organisers |
 | TBD-05 | 2027 stays open with no deadline until Management sets one as edition data. Reapplication means submitting a 2027 application from the same account. | Default — awaiting Management |
-| TBD-06 | Seed the RQ §2 tentative programme labelled "tentative". Admin and Management edit it as content. | Default — awaiting Organisers (final content) |
+| TBD-06 | Seed the RQ §2 tentative programme labelled "tentative". Admin and Management edit it as content. | Default — awaiting Organisers (final content) · **built (Phase 7)** |
 | TBD-07 | Always show 112 (India's national emergency number). Organisers supply campus security, medical and control-room numbers. Escalation follows TBD-27. | Default — awaiting Organisers |
 | TBD-08 | The Junicorn brochure's ages and 200→100 stages do **not** apply to this registration workflow. | Default — awaiting Organisers |
 | TBD-09 | No cap on applications. The selection limit is set per edition by Management (configurable, RQ §6). | Resolved by design |
@@ -43,12 +43,12 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-21 | Management Team members operate "currently pitching". One named operator per venue session on the run sheet. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-22 | Pool: every startup with 2026 access plus every jury member. **No priority**: random, with the unassigned listed. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-23 | Close the assignment with a reason, then reassign manually from free volunteers. No automatic reshuffle. | Default — awaiting Management · **built (Phase 6)** |
-| TBD-24 | Admin: documents, emergency contacts, safety guidelines, static pages. Management: schedule, venues, meals, accommodation, travel, notices. | Default — awaiting Organisers |
+| TBD-24 | Admin: documents, emergency contacts, safety guidelines, static pages. Management: schedule, venues, meals, accommodation, travel, notices. | Default — awaiting Organisers · **built (Phase 7)** |
 | TBD-25 | The website links to the WhatsApp Help Desk (click-to-chat) and the app. **No separate web chat.** | Default — awaiting Organisers |
 | TBD-26 | English only for 2026. All text is externalised so other languages can be added later. | Default — awaiting Organisers |
 | TBD-27 | Emergency: acknowledge within 5 min, else escalate to the Management duty lead. High: 30 min. Normal: 2 h on event days, 1 working day otherwise. Configurable. | Default — awaiting Organisers |
 | TBD-28 | Minimum roster: 2 support staff per shift on 17–20 Dec (07:00–22:00 IST) plus 1 on call overnight. Business hours otherwise. Alerts: dashboard plus SMS to the on-duty phone. | Default — awaiting Organisers |
-| TBD-29 | Notices go in-app plus push only. "Authorised groups" are named lists that Management maintains. | Default — awaiting Management |
+| TBD-29 | Notices go in-app plus push only. "Authorised groups" are named lists that Management maintains. | Default — awaiting Management · **built (Phase 7)** |
 | TBD-30 | No QR check-in, meal tracking or room allocation for 2026. The module boundaries stay disabled. | Default — awaiting Organisers |
 | TBD-31 | Export is a separate permission. Admin exports the data it administers; Management exports selection and jury data; nobody else. Every export is audited and sanitised. | Default — awaiting Organisers |
 | TBD-32 | Draft notice and retention schedule below and in [PRIVACY_NOTICE_DRAFT.md](/docs/PRIVACY_NOTICE_DRAFT.md). The launch gate stays shut until legal approval. | Default — awaiting **Legal** |
@@ -70,6 +70,9 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-48 | Volunteer-assignment messages: in-app plus one email/SMS through the existing outbox, to both the volunteer and the target. Wording is draft. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-49 | Contact shown between a volunteer and their target: name and mobile number only, never email. | Default — awaiting Management + Legal · **built (Phase 6)** |
 | TBD-50 | Rubric changes after scoring starts: submitted evaluations keep their version; drafts and reopened evaluations are scored against the latest approved version. | Default — awaiting Management · **built (Phase 6)** |
+| TBD-51 | Event documents: PDF, PNG or JPEG up to 10 MB, in a private Supabase Storage bucket, opened only through 60-second links issued after an audience check. Replaced, never edited. | Default — awaiting Organisers · **built (Phase 7)** |
+| TBD-52 | Push notifications through the Expo push service (FCM for Android, APNs for iOS), with credentials under the organisation's accounts. | Default — awaiting Organisers + Budget · **built (Phase 7)** |
+| TBD-53 | Content edits are drafts until published; a published notice may have its text corrected (audited) but never its audience; a notice reaches only devices registered when it is published. | Default — awaiting Management · **built (Phase 7)** |
 | OD-01 | WhatsApp verification uses a link code shown in the signed-in app. | **Decided** |
 | OD-02 | iOS reinstall: sign out on the first launch after any reinstall. To build before store submission (not part of the Phase 6 jury/volunteer delivery). | **Decided** · not built yet |
 | OD-03 | Maps: static map links inside venue content. No maps SDK or API. | **Decided** |
@@ -312,7 +315,8 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 
 ### TBD-06 · Final schedule and venues
 - **Decision:** Seed the tentative programme from RQ §2 as content labelled "tentative". Admin and Management update it in the content service; changes never need an app release (RQ §10).
-- **Approval:** Organisers (final content). **Status:** Default — awaiting Organisers. Built in Phase 7.
+- **Approval:** Organisers (final content). **Status:** Default — awaiting Organisers.
+- **Built (Phase 7):** migration 0011 seeds the 2026 programme exactly as RQ §2 states it: the pre-event session on 17 December (13:30–17:30, with food), the seven 18 December items, forest trekking on 19 December, the three 20 December items, and GIET University, Gunupur as the venue. Only 17 December has times; the rest show "Time to be announced". Everything is marked "Tentative" and seeded as an **unpublished draft**: nothing appears on the website or in the app until Management reviews and publishes it. Tests: `apps/api/test/content.test.ts`.
 
 ### TBD-24 · Who maintains which information
 - **Decision:**
@@ -324,11 +328,47 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 
   Both can read everything, and each edit is audited.
 - **Why:** This follows the RQ §10 table directly. Safety information is source information because it must not change casually on event days.
-- **Approval:** Organisers. **Status:** Default — awaiting Organisers. Built in Phase 7.
+- **Approval:** Organisers. **Status:** Default — awaiting Organisers.
+- **Built (Phase 7):** permissions `content.manage_source` (Admin) and `content.manage_operational` (Management), checked by type on every create, edit, publish and archive (`403 content_not_yours`); both roles can read everything in the console. Notices are `notice.publish` (Management only). Tests: `content.test.ts`, `notices.test.ts`.
 
 ### TBD-29 · Notice channels and "authorised groups"
 - **Decision:** In-app plus push only (RQ §10). No WhatsApp, email or SMS broadcasts. "Authorised groups" are named lists that Management maintains, with explicit members; there is no rule engine.
 - **Why:** RQ §10 confirms only in-app and push. Broadcasting over WhatsApp would need approved paid templates and opt-in, and SMS broadcasts would need DLT templates and per-message cost.
+- **Approval:** Management. **Status:** Default — awaiting Management.
+- **Built (Phase 7):**
+  - Audiences: **everyone** (every participant of the edition), one or more **participant roles** (startup leaders, startup members, jury, volunteers, delegates), or one **authorised group**. Recipients are worked out on the server inside the edition: a person needs unrevoked access to that edition, a matching participant role (or group membership) and an account that is not deactivated. Staff and applicants without event access never receive participant notices (FR-NOT-05, AT-09).
+  - Groups are named per edition; only participants of that edition can be members (API and a database trigger).
+  - Each recipient gets an in-app notice; with push chosen, one push message per device registered at that moment. Management sees in-app reach and opens, and push status per device: waiting, handed to the push service, failed or cancelled. "Handed to the push service" is not presented as delivery (FR-NOT-04).
+  - Tests: `notices.test.ts`; browser: `scripts/e2e_event_notices.py`.
+
+### TBD-51 · Event documents: storage, file types and size
+- **Decision:**
+  - PDF, PNG or JPEG only, up to 10 MB each. The server checks the file's content against its declared type, so a renamed executable is refused.
+  - Files go to a **private** Supabase Storage bucket (`event-documents`) in the same project (EXECUTION_PLAN: "Supabase Storage, private buckets, short-lived signed URLs").
+  - A viewer gets a link valid for **60 seconds**, issued only after the API checks the document's audience (SEC-08). An out-of-audience, archived or other-edition document is reported as missing.
+  - A document is never edited: a new file is a new version that replaces the old one, and the old one is kept.
+  - Only the Admin uploads (TBD-24).
+- **Why:** The requirements ask for event documents with role-based visibility (FR-EVT-14, -17) but do not say which formats. These three cover the event documents described in RQ §2 and keep active content (HTML, Office macros, archives) out.
+- **Built (Phase 7):** a storage adapter with two backends: `supabase` (staging and production; not yet verified against the live bucket) and `database` (development and tests only; the production launch gate refuses it). Tests: `content.test.ts`.
+- **Approval:** Organisers (formats and size). **Status:** Default — awaiting Organisers.
+
+### TBD-52 · Push notification provider
+- **Decision:** The **Expo push service**, which the app already uses through `expo-notifications` (EXECUTION_PLAN). It forwards to Firebase Cloud Messaging on Android and to Apple Push Notification service on iOS.
+  - An EAS project, FCM credentials and an APNs key are needed, all under the organisation's accounts (TBD-36).
+  - `EXPO_ACCESS_TOKEN` (enhanced push security) is a server-side secret.
+  - The API records Expo's ticket and checks the receipt about 15 minutes later. A failed receipt marks the message failed; "device not registered" also disables that device.
+- **Why:** One integration for both platforms, no extra server component, and no device-token handling per platform. The service is free at the event's scale.
+- **Limits:** Expo Go on Android cannot receive remote push (since SDK 53), so push needs a development or store build of the app. The in-app inbox works everywhere.
+- **Built (Phase 7):** the push sender, receipts check and device registration (`POST/DELETE /v1/me/push-tokens`). Tested against the documented request formats with recorded responses only; **not verified with live credentials or a real device**.
+- **Approval:** Organisers (accounts) and Budget. **Status:** Default — awaiting Organisers + Budget.
+
+### TBD-53 · Drafts, corrections and push timing
+- **Decision:**
+  - Event information: every edit is a draft that users do not see until someone with the right permission publishes it with a change summary. Each publish is a numbered version; earlier versions are kept. Items are archived, never deleted.
+  - Notices: a published notice's **text** may be corrected with a reason; inboxes show the corrected text, and pushes not yet sent go out corrected. The **audience, edition and push choice** are fixed: to reach different people, withdraw it and publish a new one. A withdrawn notice disappears from inboxes and cancels unsent pushes; it is kept with its reason.
+  - Push goes only to devices registered when the notice is published. Someone who installs the app later sees the notice in their inbox, without a push.
+- **Why:** FR-EVT-16 asks for drafts, versions and change summaries. FR-NOT-06 asks for audited edits and withdrawals; letting the audience change after sending would make the recipient list and the audit unreliable.
+- **Built (Phase 7):** API, database triggers (live content changes only by a publish; notices keep their audience; nothing is deleted) and tests.
 - **Approval:** Management. **Status:** Default — awaiting Management.
 
 ### TBD-14 · Result notification channels
@@ -506,6 +546,8 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - adapters for Vertex AI (with an optional ranking-only service account, impersonated), SMTP and MSG91, tested against their documented request formats with recorded responses;
   - `pnpm --filter @sj/api ranking:eval`, which runs the evaluation on synthetic applications.
 
+  Phase 7 adds the Expo push sender (TBD-52) and the Supabase Storage adapter (TBD-51), tested the same way.
+
   **None has been exercised against a live account yet**; that is launch checklist §B.
 - **Neutrality note:** This register was drafted with an AI assistant from Anthropic, a model vendor itself. The model platform was chosen for consolidation with hosting, not by model brand, and the adapter allows switching.
 - **Approval:** Organisers and Budget (contracts and DPAs); Legal (cross-border processing). **Status:** Default — awaiting Organisers + Budget.
@@ -582,6 +624,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | All | Code comments, console text and docs now cite this register instead of "not decided". |
 | Phase 5 (15 Oct 2026) | Migrations `0008_ranking_selection.sql` and `0009_ranking_worker_set_role.sql`, and the ranking, outbox and correction modules build TBD-01, -13, -14, -18, -37, -42 and -44 and the TBD-35 adapters. See [PHASES.md](PHASES.md) for details. |
 | Phase 6 (15 Oct 2026) | Migration `0010_jury_volunteers.sql` and the `jury` and `volunteers` modules build TBD-20, -21, -22, -23 and -43. New defaults TBD-47…50 record the choices the requirements leave open. See [PHASES.md](PHASES.md). |
+| Phase 7 (16 Oct 2026) | Migration `0011_event_content_notices.sql` and the `content` and `notices` modules build TBD-06, -24 and -29. New defaults TBD-51…53 record the choices the requirements leave open (documents, push provider, drafts and corrections). See [PHASES.md](PHASES.md). |
 
 Sources for vendor and legal facts (checked 15 Oct 2026):
 - [Supabase SMTP](https://supabase.com/docs/guides/auth/auth-smtp)

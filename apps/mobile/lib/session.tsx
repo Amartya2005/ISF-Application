@@ -5,6 +5,7 @@ import { ApiError, createApi, type Api } from "@sj/client";
 import { type MeResponse, type SignInIdentifier, type SignInMethod } from "@sj/contracts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { API_URL, AUTH_MODE, SIGNIN_METHODS, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { registerForPush, unregisterPush } from "./push";
 import { secureStorage, supabaseAuthStorage } from "./storage";
 
 const DEV_TOKEN_KEY = "sj.mobile.token";
@@ -102,12 +103,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe, sb]);
 
+  const pushDone = useRef<string | null>(null);
   const signOut = useCallback(async () => {
+    await unregisterPush(api);   // while the session is still valid
+    pushDone.current = null;
     if (AUTH_MODE === "dev") await secureStorage.remove(DEV_TOKEN_KEY);
     else await (await sb()).auth.signOut();
     setMe(null);
     setSignedIn(false);
-  }, [sb]);
+  }, [sb, api]);
+
+  // Once an active account is known, register this device for notice push notifications (best effort).
+  useEffect(() => {
+    const id = me?.account?.status === "active" ? me.account.id : null;
+    if (!id || pushDone.current === id) return;
+    pushDone.current = id;
+    void registerForPush(api);
+  }, [me, api]);
 
   const value = useMemo<Session>(() => ({ api, authMode: AUTH_MODE, signInMethods: SIGNIN_METHODS, signedIn, me, meError, refreshMe, startSignIn, verifyCode, signOut }),
     [api, signedIn, me, meError, refreshMe, startSignIn, verifyCode, signOut]);

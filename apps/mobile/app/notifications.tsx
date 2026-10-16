@@ -2,7 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { formatIst } from "@sj/client";
 import type { NotificationItem } from "@sj/contracts";
-import { Card, H2, Loading, Notice, P, Screen } from "../components/ui";
+import { Badge, Card, H2, Loading, Notice, P, Screen } from "../components/ui";
 import { messageOf, useSession } from "../lib/session";
 
 export default function Notifications() {
@@ -17,7 +17,11 @@ export default function Notifications() {
   return (
     <Screen>
       {items.map((n) => (
-        <Card key={n.id}>
+        <Card key={n.id} label={n.title} onPress={n.readAt ? undefined : () => {
+          void api.markRead(n.id).then(() => setItems((xs) => xs?.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)) ?? null), () => {});
+        }}>
+          {!n.readAt && <Badge text={n.kind === "notice" ? "New notice" : "New"} tone="ok" />}
+          {n.readAt && n.kind === "notice" && <Badge text="Notice" />}
           <H2>{n.title}</H2>
           <P>{n.body}</P>
           <P muted small>{formatIst(n.createdAt)} IST</P>

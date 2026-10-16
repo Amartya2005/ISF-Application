@@ -3,7 +3,7 @@
 // processes can run safely side by side.
 import type { Config } from "./config.js";
 import type { Sql } from "./db/client.js";
-import { dispatchOutbox, logSender, msg91Sender, smtpSender, type MessageSender } from "./modules/notifications/outbox.js";
+import { checkPushReceipts, dispatchOutbox, expoPushSender, logSender, msg91Sender, smtpSender, type ExpoPushOptions, type MessageSender } from "./modules/notifications/outbox.js";
 import { stubModel, vertexModel, type RankingModel } from "./modules/ranking/model.js";
 import { processNextRankingRun } from "./modules/ranking/worker.js";
 
@@ -17,6 +17,8 @@ export async function sendersFrom(config: Config, log: (m: string) => void): Pro
   if (config.email.provider === "log") out.push(logSender("email", log));
   if (config.sms.provider === "msg91") out.push(msg91Sender(config.sms.msg91!));
   if (config.sms.provider === "log") out.push(logSender("sms", log));
+  if (config.push.provider === "expo") out.push(expoPushSender({ accessToken: config.push.expoAccessToken }));
+  if (config.push.provider === "log") out.push(logSender("push", log));
   return out;
 }
 
@@ -39,9 +41,12 @@ export async function rankingRoleUsable(sql: Sql): Promise<boolean> {
 export function startWorkers(o: {
   sql: Sql; model: RankingModel; senders: MessageSender[]; clock: () => Date; log: { info(m: string): void; error(o: unknown, m: string): void };
   intervalMs?: number;
+  /** Set when push goes through Expo: receipts are checked about once a minute. */
+  pushReceipts?: ExpoPushOptions;
 }): () => Promise<void> {
   let stopped = false;
   let busy: Promise<void> | null = null;
+  let lastReceipts = 0;
   void rankingRoleUsable(o.sql).then((ok) => {
     if (!ok) o.log.error({}, "ranking worker cannot SET ROLE sj_ranking_worker: ranking runs will stay queued. Run the migrations (0009) as the API's database user.");
   });
@@ -51,6 +56,11 @@ export function startWorkers(o: {
       if (!stopped) {
         const r = await dispatchOutbox(o.sql, o.senders, o.clock());
         if (r.sent || r.failed || r.retrying) o.log.info(`outbox: ${r.sent} sent, ${r.retrying} retrying, ${r.failed} failed`);
+      }
+      if (!stopped && o.pushReceipts && Date.now() - lastReceipts > 60_000) {
+        lastReceipts = Date.now();
+        const rc = await checkPushReceipts(o.sql, o.pushReceipts, o.clock());
+        if (rc.checked) o.log.info(`push receipts: ${rc.checked} checked, ${rc.failed} failed`);
       }
     } catch (err) {
       o.log.error({ err }, "background worker tick failed");

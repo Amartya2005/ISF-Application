@@ -44,6 +44,22 @@ import type {
   VolunteerOverview,
   VolunteerRun,
   VolunteerTargetRef,
+  ContentCreate,
+  ContentOverview,
+  ContentUpdate,
+  ContentVersion,
+  DocumentLink,
+  DocumentUpload,
+  EventInfo,
+  ManagedContentItem,
+  ManagedDocument,
+  ManagedNotice,
+  NoticeAudience,
+  NoticeCreate,
+  NoticeEdit,
+  NoticePreview,
+  NoticesOverview,
+  PushTokenRegister,
 } from "@sj/contracts";
 
 export class ApiError extends Error {
@@ -79,8 +95,19 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
     return data as T;
   }
 
+  const base = baseUrl.replace(/\/$/, "");
   return {
+    /** Turns an API-relative link (development document storage) into an absolute URL; absolute links pass through. */
+    absoluteUrl: (url: string) => (url.startsWith("/") ? `${base}${url}` : url),
     editions: () => req<PublicEdition[]>("GET", "/v1/public/editions"),
+    // Event information (Phase 7): the same published data for the website (public) and the app (participants).
+    publicEvent: (year: number) => req<EventInfo>("GET", `/v1/public/editions/${year}/event`),
+    publicDocumentLink: (year: number, id: string) => req<DocumentLink>("GET", `/v1/public/editions/${year}/documents/${id}/link`),
+    event: (year: number) => req<EventInfo>("GET", `/v1/editions/${year}/event`),
+    documentLink: (year: number, id: string) => req<DocumentLink>("GET", `/v1/editions/${year}/documents/${id}/link`),
+    markRead: (id: string) => req<{ read: true }>("POST", `/v1/me/notifications/${id}/read`),
+    registerPushToken: (body: PushTokenRegister) => req<{ registered: true }>("POST", "/v1/me/push-tokens", body),
+    removePushToken: (token: string) => req<{ removed: boolean }>("DELETE", "/v1/me/push-tokens", { token }),
     /** Development sign-in only (refused in production): by email or by mobile number. */
     devSession: (id: string | SignInIdentifier, mfa = false) =>
       req<{ token: string }>("POST", "/v1/dev/session", { ...(typeof id === "string" ? { email: id } : id), mfa }),
@@ -163,6 +190,27 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
       reassignVolunteer: (id: string, body: ReassignRequest) => req<VolunteerAssignmentItem>("POST", `/v1/manage/volunteer-assignments/${id}/reassign`, body),
       closeVolunteerAssignment: (id: string, reason: string) =>
         req<VolunteerAssignmentItem>("POST", `/v1/manage/volunteer-assignments/${id}/close`, { reason }),
+      // Event information and documents (Phase 7; TBD-24 decides who may edit which type)
+      content: (year: number) => req<ContentOverview>("GET", `/v1/manage/editions/${year}/content`),
+      createContent: (year: number, body: ContentCreate) => req<ManagedContentItem>("POST", `/v1/manage/editions/${year}/content`, body),
+      updateContent: (id: string, body: ContentUpdate) => req<ManagedContentItem>("PUT", `/v1/manage/content/${id}`, body),
+      publishContent: (id: string, changeSummary: string) => req<ManagedContentItem>("POST", `/v1/manage/content/${id}/publish`, { changeSummary }),
+      discardDraft: (id: string) => req<ManagedContentItem>("POST", `/v1/manage/content/${id}/discard-draft`),
+      archiveContent: (id: string, reason: string) => req<ManagedContentItem>("POST", `/v1/manage/content/${id}/archive`, { reason }),
+      contentVersions: (id: string) => req<ContentVersion[]>("GET", `/v1/manage/content/${id}/versions`),
+      uploadDocument: (year: number, body: DocumentUpload) => req<ManagedDocument>("POST", `/v1/manage/editions/${year}/documents`, body),
+      archiveDocument: (id: string, reason: string) => req<{ archived: true }>("POST", `/v1/manage/documents/${id}/archive`, { reason }),
+      documentLink: (id: string) => req<DocumentLink>("GET", `/v1/manage/documents/${id}/link`),
+      // Notices (Phase 7)
+      notices: (year: number) => req<NoticesOverview>("GET", `/v1/manage/editions/${year}/notices`),
+      previewNotice: (year: number, audience: NoticeAudience) => req<NoticePreview>("POST", `/v1/manage/editions/${year}/notices/preview`, { audience }),
+      publishNotice: (year: number, body: NoticeCreate) => req<ManagedNotice>("POST", `/v1/manage/editions/${year}/notices`, body),
+      editNotice: (id: string, body: NoticeEdit) => req<ManagedNotice>("PUT", `/v1/manage/notices/${id}`, body),
+      withdrawNotice: (id: string, reason: string) => req<ManagedNotice>("POST", `/v1/manage/notices/${id}/withdraw`, { reason }),
+      createNoticeGroup: (year: number, name: string, description?: string) =>
+        req<NoticesOverview>("POST", `/v1/manage/editions/${year}/notice-groups`, { name, ...(description ? { description } : {}) }),
+      addGroupMembers: (id: string, userIds: string[]) => req<NoticesOverview>("POST", `/v1/manage/notice-groups/${id}/members`, { userIds }),
+      removeGroupMember: (id: string, userId: string) => req<NoticesOverview>("DELETE", `/v1/manage/notice-groups/${id}/members/${userId}`),
     },
     /** Jury members: their own assignments, the current pitch, and their own scores. */
     jury: {

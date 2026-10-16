@@ -11,6 +11,8 @@ export function Nav() {
       {can(me, "ranking.read") && <Link href="/ranking">AI ranking</Link>}
       {can(me, "jury.manage") && <Link href="/jury">Jury</Link>}
       {can(me, "volunteer.read") && <Link href="/volunteers">Volunteers</Link>}
+      {can(me, "content.read_all") && <Link href="/content">Event info</Link>}
+      {can(me, "notice.publish") && <Link href="/notices">Notices</Link>}
       {can(me, "user.read") && <Link href="/users">Accounts</Link>}
       {can(me, "import.manage") && <Link href="/imports">Imports</Link>}
       {me?.mfaRequired && <Link href="/mfa">Verify MFA</Link>}

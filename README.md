@@ -64,11 +64,18 @@ The architecture is locked in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (AD
   - random, reproducible one-to-one volunteer assignment as a draft for Management review; shortages are listed as unassigned targets, never doubled up; reassignment and ending keep a full history (who, when, why); concurrent requests cannot double-assign;
   - volunteers and targets see each other's name and mobile number in the app (TBD-49) and are told through in-app notices and the email/SMS outbox (TBD-48).
 
+- **Phase 7, event information and notices** (details in [`docs/PHASES.md`](docs/PHASES.md)):
+  - one published copy of the schedule, venues, food, accommodation, travel, safety guidelines, emergency contacts and information pages for the website's Programme page and the app, with drafts, change summaries, versions and a "last updated" time; 17 December is labelled the pre-event day everywhere;
+  - the Admin maintains source information and documents, Management the operational information (TBD-24), enforced on the server; each item and document has an audience (public, all participants or roles);
+  - the RQ §2 tentative programme is seeded as unpublished drafts (TBD-06); 112 is always the first emergency number;
+  - documents (PDF, PNG, JPEG) in private storage, opened through 60-second links after an audience check (TBD-51);
+  - notices from Management to everyone, roles or authorised groups of one edition, in the app inbox and as push notifications, with recipient checks, delivery figures, audited corrections and withdrawals (TBD-29, TBD-53); push through the Expo push service with receipt checks (TBD-52; not yet verified on real devices).
+
 The latest verification recorded the following, and GitHub Actions runs the automated part on every push:
 
-- 346 API tests (integration tests against PostgreSQL, plus unit tests);
+- 384 API tests (integration tests against PostgreSQL, plus unit tests);
 - 8 mobile unit tests;
-- eight browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, AI ranking through to a two-person correction, and jury scoring plus volunteer assignment in the console and the app. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
+- nine browser flows: website + Management, Admin import + activation, phone sign-in, open-redirect protection, the mobile app at phone size, staff MFA, AI ranking through to a two-person correction, jury scoring plus volunteer assignment, and event information plus notices across the console, the website and the app. **Rerun the commands in this README against your own environment and review the results before relying on that report.**
 
 ### Planned / not yet complete
 
@@ -76,8 +83,8 @@ The latest verification recorded the following, and GitHub Actions runs the auto
 - Live provider accounts: Vertex AI for ranking, Amazon SES for email, MSG91 with DLT templates for SMS (TBD-35). The adapters are built and tested against recorded request formats, not yet against live accounts. Until a provider is configured, messages stay queued and activation codes are handed over manually.
 - Organisers' sign-off of import column set v1 on a real sample file (TBD-41).
 - Sign-out on the first app launch after a reinstall (OD-02), required before store submission.
-- Event content, notices and push notifications.
-- Event features in the mobile app (schedule, venues, notices, push notifications, Help Desk), and app-store builds (needs organisation-owned Apple/Google accounts, TBD-36).
+- Live push notifications on real devices (needs an EAS project and FCM/APNs credentials under the organisation's accounts, TBD-36, TBD-52) and the private Supabase Storage bucket on staging (TBD-51).
+- The Help Desk in the app and on WhatsApp (Phase 8), and app-store builds (needs organisation-owned Apple/Google accounts, TBD-36).
 - AI Help Desk, WhatsApp integration, customer-support workflows and emergency escalation.
 - Production deployment, load/security testing and disaster-recovery validation.
 
@@ -263,6 +270,9 @@ python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
 # Jury and volunteers (Phase 6): a freshly seeded database (it checks a volunteer shortage), the console and the mobile web build
 pnpm db:seed && pnpm dev:api
 python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
+# Event information and notices (Phase 7): also a freshly seeded database (it publishes the seeded programme), plus the website
+pnpm db:seed && pnpm dev:api
+python3 scripts/e2e_event_notices.py /tmp/startup-jathara-shots
 ```
 
 Model evaluation on synthetic applications (no database, no real data). With the stub it checks the harness only:
@@ -297,6 +307,8 @@ Copy `.env.example` to `.env` and configure only the variables required by your 
 | `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox: `none` (messages stay queued), `log` (development only) or `smtp` (Amazon SES) |
 | `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION`, `MSG91_TEMPLATE_ASSIGNMENT` (volunteer assignments, TBD-48) | SMS outbox: `none`, `log` (development only) or `msg91` with DLT-registered template ids |
 | `PUBLIC_WEB_URL` | Website address used in result messages |
+| `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` | Push for notices: `none`, `log` (development only) or `expo` (TBD-52). The access token is a server-side secret |
+| `STORAGE_PROVIDER`, `STORAGE_BUCKET`, `FILE_LINK_SECRET` | Documents: `database` (development only, refused in production) or `supabase` (private bucket, default `event-documents`, TBD-51). `FILE_LINK_SECRET` signs the development store's 60-second links |
 | `DEV_NOW` | Development only: pins the API clock (refused in production and outside `AUTH_MODE=dev`) |
 | `NEXT_PUBLIC_SIGNIN_METHODS`, `EXPO_PUBLIC_SIGNIN_METHODS` | Sign-in channels: `email`, `phone` or `email,phone`. Unset allows both (development). Deployed environments set `email` until the DLT-registered SMS sender is live, then `email,phone` (TBD-12) |
 | `CORS_ORIGINS` | Explicit allowlist of trusted web origins |

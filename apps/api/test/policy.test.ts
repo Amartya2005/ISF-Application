@@ -10,6 +10,7 @@ const prodSupabase = { ...base, NODE_ENV: "production", AUTH_MODE: "supabase", S
 const ready = {
   ...prodSupabase, CORS_ORIGINS: "https://startupjathara.example,https://console.startupjathara.example", LAUNCH_APPROVED: "true",
   RANKING_PROVIDER: "vertex", RANKING_VERTEX_PROJECT: "isf-prod", RANKING_VERTEX_MODEL: "model-under-evaluation",
+  STORAGE_PROVIDER: "supabase",
 };
 const APPROVED = { privacyNoticeVersion: "2026-11-01" };
 
@@ -40,13 +41,20 @@ describe("production launch gate and staff MFA policy (fail closed)", () => {
   it("lists every unmet item at once", () => {
     let msg = "";
     try { loadConfig({ ...base, NODE_ENV: "production" } as never); } catch (e) { msg = (e as Error).message; }
-    expect(msg.match(/^- /gm)?.length).toBe(5);   // auth mode, CORS, draft privacy notice, stub ranking, launch sign-off
+    expect(msg.match(/^- /gm)?.length).toBe(6);   // auth mode, CORS, draft privacy notice, stub ranking, database storage, launch sign-off
   });
   it("refuses the development ranking stub, log-only message providers and a pinned clock in production (Phase 5)", () => {
     expect(() => loadConfig({ ...ready, RANKING_PROVIDER: "stub" } as never, APPROVED)).toThrow(/RANKING_PROVIDER must be vertex/);
     expect(() => loadConfig({ ...ready, NOTIFY_EMAIL_PROVIDER: "log" } as never, APPROVED)).toThrow(/=log is for development only/);
     expect(() => loadConfig({ ...ready, NOTIFY_SMS_PROVIDER: "log" } as never, APPROVED)).toThrow(/=log is for development only/);
     expect(() => loadConfig({ ...ready, DEV_NOW: "2026-11-06T10:00:00+05:30" } as never, APPROVED)).toThrow(/DEV_NOW must not be set/);
+  });
+  it("refuses the development document storage and log-only push in production (Phase 7)", () => {
+    expect(() => loadConfig({ ...ready, STORAGE_PROVIDER: "database" } as never, APPROVED)).toThrow(/STORAGE_PROVIDER must be supabase/);
+    expect(() => loadConfig({ ...ready, STORAGE_PROVIDER: undefined } as never, APPROVED)).toThrow(/STORAGE_PROVIDER must be supabase/);
+    expect(() => loadConfig({ ...ready, PUSH_PROVIDER: "log" } as never, APPROVED)).toThrow(/PUSH_PROVIDER=log is for development only/);
+    expect(loadConfig({ ...ready, PUSH_PROVIDER: "expo" } as never, APPROVED).push.provider).toBe("expo");
+    expect(() => loadConfig({ ...base, STORAGE_PROVIDER: "supabase" } as never)).toThrow(/SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_PROVIDER/);
   });
   it("allows DEV_NOW only for development sign-in, and requires provider settings when a provider is chosen", () => {
     expect(loadConfig({ ...base, DEV_NOW: "2026-11-06T10:00:00+05:30" } as never).devNow?.toISOString()).toBe("2026-11-06T04:30:00.000Z");
@@ -76,7 +84,7 @@ describe("MFA step-up signal (GET /v1/me) with REQUIRE_STAFF_MFA=true", () => {
     it(`${email}: aal1 withholds every staff permission and asks for MFA; aal2 restores them`, async () => {
       const weak = (await t.call("GET", "/v1/me", { as: email })).json;
       expect(weak.mfaRequired).toBe(true);
-      expect(weak.permissions).toEqual(["application.read_own", "application.withdraw_own", "notification.read_own", "registration.submit"]);
+      expect(weak.permissions).toEqual(["application.read_own", "application.withdraw_own", "notification.read_own", "push.register_own", "registration.submit"]);
       const strong = (await t.call("GET", "/v1/me", { as: email, aal: "aal2" })).json;
       expect(strong.mfaRequired).toBe(false);
       expect(strong.permissions.length).toBeGreaterThan(3);

@@ -5,6 +5,8 @@
 import type { Db, Sql } from "../../db/client.js";
 
 export type ContactChannel = "email" | "sms";
+/** Channels the dispatcher delivers: email/SMS (Phase 5) and push (Phase 7, TBD-52). In-app needs no delivery. */
+export type OutboxChannel = ContactChannel | "push";
 
 /**
  * Fixed message templates. DRAFT COPY: the wording needs Management approval (TBD-14), and every SMS template must be
@@ -74,9 +76,15 @@ export async function enqueue(db: Db, m: OutboxMessage, now: Date): Promise<Cont
 // ---------------------------------------------------------------- dispatcher
 export type OutgoingMessage = { id: string; kind: string; to: string; subject: string; body: string; payload: Record<string, unknown> };
 export interface MessageSender {
-  readonly channel: ContactChannel;
+  readonly channel: OutboxChannel;
   readonly name: string;
-  send(m: OutgoingMessage): Promise<void>;
+  /** Resolves when the provider has ACCEPTED the message (recorded as "sent"; not proof of delivery, FR-NOT-04). */
+  send(m: OutgoingMessage): Promise<void | { providerRef?: string }>;
+}
+
+/** A failure that retrying cannot fix (for example a device that no longer exists): the message fails at once. */
+export class PermanentFailure extends Error {
+  constructor(message: string, readonly code: string) { super(message); }
 }
 
 export const MAX_ATTEMPTS = 6;
@@ -92,7 +100,7 @@ export async function dispatchOutbox(sql: Sql, senders: MessageSender[], now: Da
   const channels = senders.map((s) => s.channel);
   if (!channels.length) return result;
   await sql.begin(async (tx) => {
-    const rows = await tx<{ id: string; kind: string; channel: ContactChannel; recipient: string; title: string; body: string;
+    const rows = await tx<{ id: string; kind: string; channel: OutboxChannel; recipient: string; title: string; body: string;
                             payload: Record<string, unknown>; attempts: number; sensitive: boolean }[]>`
       select id, kind, channel, recipient, title, body, payload, attempts, sensitive from notifications
       where status = 'queued' and channel in ${tx(channels)} and (next_attempt_at is null or next_attempt_at <= ${now})
@@ -101,16 +109,20 @@ export async function dispatchOutbox(sql: Sql, senders: MessageSender[], now: Da
       const sender = senders.find((s) => s.channel === n.channel)!;
       const attempts = n.attempts + 1;
       try {
-        await sender.send({ id: n.id, kind: n.kind, to: n.recipient, subject: n.title, body: n.body, payload: n.payload });
+        const accepted = await sender.send({ id: n.id, kind: n.kind, to: n.recipient, subject: n.title, body: n.body, payload: n.payload });
         await tx`
           update notifications set status = 'sent', sent_at = ${now}, attempts = ${attempts}, last_error = null,
+            provider_ref = ${(accepted && accepted.providerRef) || null},
             body = case when sensitive then ${SCRUBBED} else body end,
             payload = case when sensitive then '{}'::jsonb else payload end
           where id = ${n.id}`;
         result.sent += 1;
       } catch (err) {
         const message = String((err as Error).message ?? err).slice(0, 500);
-        if (attempts >= MAX_ATTEMPTS) {
+        if (err instanceof PermanentFailure && err.code === "DeviceNotRegistered" && n.channel === "push") {
+          await tx`update push_tokens set disabled_at = ${now}, disabled_reason = 'DeviceNotRegistered' where token = ${n.recipient}`;
+        }
+        if (attempts >= MAX_ATTEMPTS || err instanceof PermanentFailure) {
           await tx`
             update notifications set status = 'failed', attempts = ${attempts}, last_error = ${message},
               body = case when sensitive then ${SCRUBBED} else body end,
@@ -181,8 +193,87 @@ export function msg91Sender(o: Msg91Options): MessageSender {
   };
 }
 
+// ---------------------------------------------------------------- push (Phase 7, TBD-52)
+export type ExpoPushOptions = { accessToken?: string; fetchImpl?: typeof fetch };
+const EXPO_SEND = "https://exp.host/--/api/v2/push/send";
+const EXPO_RECEIPTS = "https://exp.host/--/api/v2/push/getReceipts";
+
+function expoHeaders(o: ExpoPushOptions) {
+  return { "content-type": "application/json", accept: "application/json", ...(o.accessToken ? { authorization: `Bearer ${o.accessToken}` } : {}) };
+}
+
+/**
+ * Push through the Expo push service, which forwards to FCM (Android) and APNs (iOS). "sent" means Expo accepted the
+ * message (a ticket); the receipt check later records failures. Not yet verified against live credentials.
+ */
+export function expoPushSender(o: ExpoPushOptions = {}): MessageSender {
+  const f = o.fetchImpl ?? fetch;
+  return {
+    channel: "push",
+    name: "expo",
+    async send(m) {
+      const res = await f(EXPO_SEND, {
+        method: "POST", headers: expoHeaders(o), signal: AbortSignal.timeout(15_000),
+        body: JSON.stringify({ to: m.to, title: m.subject, body: m.body, data: m.payload, sound: "default", priority: "high" }),
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`Expo push HTTP ${res.status}: ${text.slice(0, 200)}`);
+      const j = JSON.parse(text) as { data?: { status: string; id?: string; message?: string; details?: { error?: string } } | { status: string }[] };
+      const ticket = (Array.isArray(j.data) ? j.data[0] : j.data) as { status: string; id?: string; message?: string; details?: { error?: string } } | undefined;
+      if (!ticket) throw new Error("Expo push returned no ticket");
+      if (ticket.status !== "ok") {
+        const code = ticket.details?.error ?? "error";
+        const msg = `Expo push: ${code}${ticket.message ? `: ${ticket.message}` : ""}`.slice(0, 300);
+        if (code === "DeviceNotRegistered" || code === "InvalidCredentials") throw new PermanentFailure(msg, code);
+        throw new Error(msg);
+      }
+      return { providerRef: ticket.id };
+    },
+  };
+}
+
+export type ReceiptResult = { checked: number; failed: number };
+
+/**
+ * Expo receipts arrive some minutes after a ticket. A receipt error turns a "sent" push into "failed" (and disables a
+ * device that no longer exists); an "ok" receipt only means FCM/APNs accepted it, so the status stays "sent".
+ */
+export async function checkPushReceipts(sql: Sql, o: ExpoPushOptions, now: Date, opts: { minAgeMs?: number; limit?: number } = {}): Promise<ReceiptResult> {
+  const f = o.fetchImpl ?? fetch;
+  const cutoff = new Date(now.getTime() - (opts.minAgeMs ?? 15 * 60_000));
+  const rows = await sql<{ id: string; ref: string; token: string; sentAt: Date }[]>`
+    select id, provider_ref as ref, recipient as token, sent_at as "sentAt" from notifications
+    where channel = 'push' and status = 'sent' and receipt_checked_at is null and provider_ref is not null and sent_at <= ${cutoff}
+    order by sent_at limit ${opts.limit ?? 300}`;
+  if (!rows.length) return { checked: 0, failed: 0 };
+  const res = await f(EXPO_RECEIPTS, { method: "POST", headers: expoHeaders(o), body: JSON.stringify({ ids: rows.map((r) => r.ref) }),
+    signal: AbortSignal.timeout(15_000) });
+  if (!res.ok) throw new Error(`Expo receipts HTTP ${res.status}`);
+  const receipts = ((await res.json()) as { data?: Record<string, { status: string; message?: string; details?: { error?: string } }> }).data ?? {};
+  const out: ReceiptResult = { checked: 0, failed: 0 };
+  for (const r of rows) {
+    const rc = receipts[r.ref];
+    if (!rc) {
+      // Expo keeps receipts for about a day; after that, stop asking and leave the status as recorded.
+      if (now.getTime() - r.sentAt.getTime() > 24 * 3600_000) await sql`update notifications set receipt_checked_at = ${now} where id = ${r.id}`;
+      continue;
+    }
+    out.checked += 1;
+    if (rc.status === "ok") {
+      await sql`update notifications set receipt_checked_at = ${now} where id = ${r.id}`;
+    } else {
+      const code = rc.details?.error ?? "error";
+      await sql`update notifications set status = 'failed', receipt_checked_at = ${now},
+                last_error = ${`Expo receipt: ${code}${rc.message ? `: ${rc.message}` : ""}`.slice(0, 500)} where id = ${r.id}`;
+      if (code === "DeviceNotRegistered") await sql`update push_tokens set disabled_at = ${now}, disabled_reason = 'DeviceNotRegistered' where token = ${r.token}`;
+      out.failed += 1;
+    }
+  }
+  return out;
+}
+
 /** Development only: logs instead of sending (refused in production by the launch gate). Never logs sensitive bodies. */
-export function logSender(channel: ContactChannel, log: (msg: string) => void): MessageSender {
+export function logSender(channel: OutboxChannel, log: (msg: string) => void): MessageSender {
   return {
     channel,
     name: "log",

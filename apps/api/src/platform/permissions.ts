@@ -29,6 +29,12 @@ export type Permission =
   | "volunteer.reassign"
   | "volunteer.my_assignment"
   | "volunteer.my_volunteer"
+  // Phase 7: event information and notices (FR-EVT-*, FR-NOT-*; TBD-24 splits who maintains which content)
+  | "content.read_all"
+  | "content.manage_source"
+  | "content.manage_operational"
+  | "notice.publish"
+  | "push.register_own"
   // admin (Phase 3)
   | "import.manage"
   | "user.read"
@@ -37,17 +43,23 @@ export type Permission =
   | "activation.issue";
 
 /** Granted to every authenticated principal regardless of role. */
-export const AUTHENTICATED: ReadonlySet<Permission> = new Set(["registration.submit", "application.read_own", "notification.read_own", "application.withdraw_own"]);
+export const AUTHENTICATED: ReadonlySet<Permission> = new Set([
+  "registration.submit", "application.read_own", "notification.read_own", "application.withdraw_own", "push.register_own",
+]);
 
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
   // FR-IAM-06: Admin holds NO management permissions unless also granted the `management` role.
   // RQ §9: the Admin initiates or oversees volunteer assignment; saving (review) and reassignment are Management's.
-  admin: ["import.manage", "user.read", "user.manage", "role.assign", "activation.issue", "volunteer.read", "volunteer.generate"],
+  // TBD-24: the Admin maintains the official source information (documents, emergency contacts, safety, pages).
+  admin: ["import.manage", "user.read", "user.manage", "role.assign", "activation.issue", "volunteer.read", "volunteer.generate",
+    "content.read_all", "content.manage_source"],
   management: [
     "application.read_all", "decision.draft", "decision.release", "selection_limit.configure",
     "criteria.manage", "ranking.run", "ranking.read", "decision.correct",
     "jury.manage", "jury.review",
     "volunteer.read", "volunteer.generate", "volunteer.review", "volunteer.reassign",
+    // TBD-24: operational information (schedule, venues, food, accommodation, travel) and notices.
+    "content.read_all", "content.manage_operational", "notice.publish",
   ],
   // Participant permissions are further limited to the caller's own startup, assignments and edition on the server.
   startup_team_leader: ["volunteer.my_volunteer"],

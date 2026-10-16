@@ -79,3 +79,10 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .badge-under_review { background: var(--warn-soft); border-color: #ecd9ae; color: var(--warn); }
 .list { display: grid; gap: 12px; }
 .row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* Phase 7: event information */
+.event-row { display: grid; grid-template-columns: 9.5rem 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.event-row:first-of-type { border-top: none; }
+.event-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.9rem; }
+.event-text { white-space: pre-wrap; }
+@media (max-width: 520px) { .event-row { grid-template-columns: 1fr; gap: 2px; } }

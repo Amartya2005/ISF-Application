@@ -1,5 +1,6 @@
 // Integration-test harness: every test file gets its own freshly migrated PostgreSQL database.
 // Needs a reachable server: TEST_DATABASE_URL (admin connection) or the local one from scripts/dev-db.sh.
+import type { FileStore } from "../src/modules/content/storage.js";
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import type { Role } from "@sj/contracts";
@@ -53,7 +54,7 @@ type CallOpts = { as?: string; aal?: "aal1" | "aal2"; body?: unknown; token?: st
 export async function createTestApp(
   opts: {
     now?: Date; requireStaffMfa?: boolean; corsOrigins?: string[]; verifier?: TokenVerifier; identity?: IdentityResolver;
-    config?: Partial<Config>; automated?: { email: boolean; sms: boolean };
+    config?: Partial<Config>; automated?: { email: boolean; sms: boolean }; fileStore?: FileStore;
   } = {},
 ) {
   const db = await createTestDb();
@@ -62,11 +63,12 @@ export async function createTestApp(
     nodeEnv: "test", databaseUrl: db.url, port: 0, authMode: "dev", devAuthSecret: SECRET,
     requireStaffMfa: opts.requireStaffMfa ?? false, corsOrigins: opts.corsOrigins ?? [], logLevel: "silent", registrationRateLimit: 1000, activationTtlHours: 72, activationRateLimit: 1000,
     runWorkers: false, publicWebUrl: "https://web.test", ranking: { provider: "stub" }, email: { provider: "none" }, sms: { provider: "none" },
+    push: { provider: "none" }, storage: { provider: "database", bucket: "event-documents", fileLinkSecret: SECRET },
     ...opts.config,
   };
   const app = await buildApp({
     config, sql: db.sql, verifier: opts.verifier ?? devVerifier(SECRET), identity: opts.identity ?? devIdentityResolver,
-    clock: () => current, logger: false, automated: opts.automated,
+    clock: () => current, logger: false, automated: opts.automated, fileStore: opts.fileStore,
   });
 
   const t = {
