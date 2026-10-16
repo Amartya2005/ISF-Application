@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Product** | Startup Jathara event platform for International Startup Foundation (ISF), built by Zeny2Labs |
-| **Covers** | Everything built up to and including **Phase 8** (16 Oct 2026; commit in the changelog below) |
+| **Covers** | Everything built up to and including **Phase 8** (commit `a18d52a`, 16 Oct 2026) |
 | **Production status** | **NOT APPROVED.** Nothing is deployed to production. The API refuses a production start until [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. |
 | **Sources of truth** | The requirements document (`Startup_Jathara_Requirements_Revised_v4`) and the PRD (`ISF_Event_Operations_Platform_PRD_v0.1`). Every open point has a recorded decision in [DECISIONS.md](DECISIONS.md). |
 | **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
@@ -45,7 +45,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `75dd860` | Phase 5: AI ranking, override reasons, two-person corrections, withdrawal, email/SMS outbox | — |
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
 | 16 Oct 2026 | `f29884a`, `93ba3c0` | Phase 7: event information, documents, notices and push notifications (`93ba3c0`: a test made independent of database collation) | 1.1 |
-| 16 Oct 2026 | Phase 8 commit (see §9) | Phase 8: AI Help Desk in the app, support tickets and Customer Support dashboard, emergency control, re-alerts and escalation. WhatsApp excluded (separate workstream) | 1.2 |
+| 16 Oct 2026 | `a18d52a` | Phase 8: AI Help Desk in the app, support tickets and Customer Support dashboard, emergency control, re-alerts and escalation. WhatsApp excluded (separate workstream) | 1.2 |
 
 ---
 
@@ -583,7 +583,7 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 
 **CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows run locally, not in CI.
 
-**Last recorded verification (16 Oct 2026, Phase 8, before commit):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. CI result: see the follow-up entry.
+**Last recorded verification (16 Oct 2026, commit `a18d52a`):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. GitHub Actions `ci` run 38881778185 passed (install, typecheck, API tests on Postgres, mobile tests, builds, mobile bundle). The separate **Android APK** workflow (added in `6316d64`) fails at its "Set up Java" step on that commit and on `a18d52a`, before any app code is built; it is not caused by Phase 8 and is not fixed here.
 
 **Previous (16 Oct 2026, commit `93ba3c0`):** 384 API and 8 mobile tests; 9 browser flows; GitHub Actions run 38849278393 passed.
 
