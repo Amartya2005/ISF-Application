@@ -11,7 +11,13 @@ describe("dev verifier", () => {
       sub: "dev|person@example.com", email: "person@example.com", phone: null, aal: "aal2",
       devAssertions: { emailVerified: true, phoneVerified: false },
     });
-    await expect(v.verify(good.slice(0, -2) + "xx")).rejects.toMatchObject({ code: "unauthenticated" });
+    // Flip one character well inside the signature (not the final base64 group, whose last two bits are padding
+    // slack and can decode to the same bytes regardless of which character sits there - a real, if rare, source of
+    // test flakiness seen in CI). Guaranteed to differ from the original character, so this always corrupts the
+    // signature rather than sometimes re-encoding the same bytes.
+    const i = good.length - 10;
+    const tampered = good.slice(0, i) + (good[i] === "A" ? "B" : "A") + good.slice(i + 1);
+    await expect(v.verify(tampered)).rejects.toMatchObject({ code: "unauthenticated" });
     await expect(v.verify(await issueDevToken("another-secret-that-is-32-characters!!", "a@b.c"))).rejects.toMatchObject({ status: 401 });
   });
 });

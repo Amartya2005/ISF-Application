@@ -3,7 +3,7 @@
 **Built by Zeny2Labs for the International Startup Foundation (ISF) and GIET University**  
 **Current delivery:** Phases 1–9 of 10 implemented; Phase 10's hardening artifacts (load test, restore drill, security self-review, sign-out on reinstall) are prepared, not fully executed  
 **Production status:** **NOT APPROVED**  
-**Latest reported repository commit:** `3cc51fe`
+**Latest reported repository commit:** `f325148` (Phase 9 and 10)
 
 The Startup Jathara Management Platform supports event operations for Startup Jathara @ Dandakaranya, hosted at GIET University, Gunupur, Odisha. The 2026 event is scheduled for **18–20 December 2026**, with a pre-event day on **17 December 2026**. The platform supports year-specific workflows for the 2026 and 2027 editions.
 

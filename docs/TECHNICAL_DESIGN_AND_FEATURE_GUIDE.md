@@ -46,7 +46,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
 | 16 Oct 2026 | `f29884a`, `93ba3c0` | Phase 7: event information, documents, notices and push notifications (`93ba3c0`: a test made independent of database collation) | 1.1 |
 | 16 Oct 2026 | `a18d52a` | Phase 8: AI Help Desk in the app, support tickets and Customer Support dashboard, emergency control, re-alerts and escalation. WhatsApp excluded (separate workstream) | 1.2 |
-| 16 Oct 2026 | *(this delivery)* | Phase 9: reports and controlled exports, admin audit viewer, data-retention purge (3 of 7 categories), mobile offline event-info cache. Phase 10: sign-out on reinstall (OD-02); load-test script and restore-drill runbook prepared, not executed against real infrastructure; a security self-review (not the required independent pen test) | 1.3 |
+| 16 Oct 2026 | `f325148` | Phase 9: reports and controlled exports, admin audit viewer, data-retention purge (3 of 7 categories), mobile offline event-info cache. Phase 10: sign-out on reinstall (OD-02); load-test script and restore-drill runbook prepared, not executed against real infrastructure; a security self-review (not the required independent pen test) | 1.3 |
 
 ---
 
@@ -636,7 +636,7 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 
 **CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows, the k6 load-test script and the restore drill all run locally, not in CI.
 
-**Last recorded verification (16 Oct 2026, this delivery):** see [PHASES.md](PHASES.md)'s Phase 9 and Phase 10 "what was built" sections for the exact test counts, and §7 and §9 above for what each covers. In summary: the API and mobile suites both grew (reports, audit, retention, offline cache, reinstall guard); typecheck, frozen-lockfile install, production builds and the mobile web export all passed; eleven browser flows passed against a fresh database, including the new `e2e_reports_audit.py`. The k6 load-test script and the restore-drill runbook were exercised only as described above — neither is the real TBD-33/AT-36 test.
+**Last recorded verification (16 Oct 2026, commit `f325148`):** see [PHASES.md](PHASES.md)'s Phase 9 and Phase 10 "what was built" sections for the exact test counts, and §7 and §9 above for what each covers. In summary: the API and mobile suites both grew (reports, audit, retention, offline cache, reinstall guard); typecheck, frozen-lockfile install, production builds and the mobile web export all passed; eleven browser flows passed against a fresh database, including the new `e2e_reports_audit.py`. The k6 load-test script and the restore-drill runbook were exercised only as described above — neither is the real TBD-33/AT-36 test.
 
 **Previous (16 Oct 2026, commit `a18d52a`):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. GitHub Actions `ci` run 38881778185 passed (install, typecheck, API tests on Postgres, mobile tests, builds, mobile bundle). The separate **Android APK** workflow (added in `6316d64`) fails at its "Set up Java" step on that commit, before any app code is built; it is not caused by Phase 8 and was not fixed there.
 
