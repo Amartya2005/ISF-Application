@@ -27,7 +27,8 @@ This repository contains a working, tested application codebase for registration
 | Production deployment | Not approved |
 | Real email/SMS provider delivery | Not verified live |
 | Real AI ranking model | Not connected or evaluated against a live provider |
-| Phase 8 Help Desk, customer support and emergency workflows | Next implementation phase |
+| In-app AI Help Desk, support tickets, Customer Support dashboard and emergency control | Implemented; real Help Desk model not connected; emergency numbers, windows and roster await organisers |
+| WhatsApp Help Desk channel | Separate workstream (not in this repository's Phase 8) |
 | Phase 9 offline mode, reports and audit view | Planned |
 | Phase 10 security review, performance/recovery tests and launch | Planned |
 
@@ -51,7 +52,7 @@ The requirements define **five interfaces over one platform**:
 2. **Shared mobile app** — one Expo codebase for Android and iOS, with role-aware participant screens.
 3. **Admin dashboard** — imported data, user accounts, access roles, official source information and documents.
 4. **Management dashboard** — applications, ranking review, selection decisions, jury workflows, volunteer assignments, operational event information and notices.
-5. **Customer Support dashboard** — planned for Phase 8; ticket triage, participant support and emergency escalation.
+5. **Customer Support dashboard** — ticket queue with emergencies first, live alerts, acknowledgement, assignment, replies, escalation and resolution (Phase 8). Management reviews it read-only.
 
 The Admin and Management dashboards are sections of a single access-controlled console, not separate deployable applications. The API enforces permissions; hiding a screen or menu item is not a security boundary.
 
@@ -148,11 +149,11 @@ The delivery plan contains ten phases:
 | 5 | AI ranking and Management-controlled selection | Done; real AI/email/SMS providers pending |
 | 6 | Jury evaluation and volunteer assignment | Done |
 | 7 | Event information, documents, notices and push support | Done; live storage/push verification pending |
-| 8 | In-app AI Help Desk, Customer Support dashboard, tickets and emergency workflow | Next |
+| 8 | In-app AI Help Desk, Customer Support dashboard, tickets and emergency workflow | Done; live Help Desk model and organiser approvals (TBD-07, -27, -28) pending |
 | 9 | Offline event-information cache, reports, controlled exports and audit view | Planned |
 | 10 | Security review, penetration-test fixes, load/recovery testing, app-store submission and launch | Planned |
 
-**WhatsApp integration is excluded from the current Phase 8 implementation scope and is assigned to a teammate.** The in-app Help Desk should be designed so the core authorised support logic can be reused later, but this repository workstream must not implement WhatsApp APIs, webhooks or credentials.
+**WhatsApp integration is excluded from Phase 8 and is assigned to a teammate.** The Help Desk engine takes an authenticated identity from a channel adapter, so a WhatsApp adapter can reuse the same authorised tools and safeguards. This repository contains no WhatsApp APIs, webhooks, credentials or tables for it.
 
 The app's sign-out-after-reinstall behaviour (OD-02) is also still outstanding and must be completed before app-store submission.
 
@@ -206,7 +207,7 @@ Hosting choices are not a deployment confirmation. Production hosting, budget an
     apps/
       api/          Fastify API, services, workers, migrations runner and tests
       web/          Public website and applicant flows
-      console/      Admin and Management console; Support dashboard is planned
+      console/      Admin, Management and Customer Support console
       mobile/       Shared Android/iOS Expo app
     packages/
       contracts/    Shared schemas, types and validation
@@ -305,6 +306,7 @@ Browser end-to-end scripts currently include the following flows. Start the requ
     python3 scripts/e2e_ranking.py /tmp/startup-jathara-shots
     python3 scripts/e2e_jury_volunteers.py /tmp/startup-jathara-shots
     python3 scripts/e2e_event_notices.py /tmp/startup-jathara-shots
+    python3 scripts/e2e_support.py /tmp/startup-jathara-shots          # API with HELPDESK_PROVIDER=stub
 
 Browser scripts require Playwright and Chromium. Some flows use controlled test configuration, synthetic data or a pinned clock. Follow the comments in each script and the [technical execution plan](docs/EXECUTION_PLAN.md) before running them; do not run example commands against production.
 
@@ -325,7 +327,7 @@ Before staging end-to-end verification can be completed:
 1. Configure staging secrets in the appropriate secret manager.
 2. Configure Supabase Auth OTP, custom SMTP and TOTP MFA settings.
 3. Host the API, website and console using staging configuration.
-4. Apply migration 0011 through the authorised staging process.
+4. Apply migrations 0011 and 0012 through the authorised staging process.
 5. Create the private event-documents Storage bucket and verify audience-restricted links.
 6. Verify authentication, device sessions, live email/SMS flows and other provider paths in the [device test protocol](docs/DEVICE_TEST_PROTOCOL.md).
 

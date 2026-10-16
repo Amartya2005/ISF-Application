@@ -60,6 +60,19 @@ import type {
   NoticePreview,
   NoticesOverview,
   PushTokenRegister,
+  EmergencyResponse,
+  HelpDeskConversation,
+  HelpDeskReply,
+  MyTicket,
+  RequesterMatch,
+  SupportAlerts,
+  SupportContactLog,
+  SupportNote,
+  SupportPolicy,
+  SupportQueue,
+  SupportStatusUpdate,
+  SupportTicketCreate,
+  SupportTicketDetail,
 } from "@sj/contracts";
 
 export class ApiError extends Error {
@@ -108,6 +121,20 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
     markRead: (id: string) => req<{ read: true }>("POST", `/v1/me/notifications/${id}/read`),
     registerPushToken: (body: PushTokenRegister) => req<{ registered: true }>("POST", "/v1/me/push-tokens", body),
     removePushToken: (token: string) => req<{ removed: boolean }>("DELETE", "/v1/me/push-tokens", { token }),
+    // Phase 8: the emergency control (contacts first; never rate-limited), the Help Desk and own requests.
+    reportEmergency: (year: number, clientRequestId: string, message?: string) =>
+      req<EmergencyResponse>("POST", `/v1/editions/${year}/emergency`, { clientRequestId, ...(message ? { message } : {}) }),
+    helpdesk: {
+      ask: (edition: number, text: string, conversationId?: string) =>
+        req<HelpDeskReply>("POST", "/v1/helpdesk/messages", { edition, text, ...(conversationId ? { conversationId } : {}) }),
+      conversation: (edition: number) => req<HelpDeskConversation>("GET", `/v1/helpdesk/conversation?edition=${edition}`),
+      askPerson: (edition: number, conversationId: string, note?: string) =>
+        req<HelpDeskReply>("POST", `/v1/helpdesk/conversations/${conversationId}/escalate?edition=${edition}`, note ? { note } : {}),
+    },
+    myTickets: (edition?: number) => req<MyTicket[]>("GET", `/v1/me/tickets${edition ? `?edition=${edition}` : ""}`),
+    createTicket: (edition: number, subject: string, description?: string) =>
+      req<MyTicket>("POST", "/v1/me/tickets", { edition, subject, ...(description ? { description } : {}) }),
+    addTicketNote: (id: string, text: string) => req<MyTicket>("POST", `/v1/me/tickets/${id}/notes`, { text }),
     /** Development sign-in only (refused in production): by email or by mobile number. */
     devSession: (id: string | SignInIdentifier, mfa = false) =>
       req<{ token: string }>("POST", "/v1/dev/session", { ...(typeof id === "string" ? { email: id } : id), mfa }),
@@ -220,6 +247,30 @@ export function createApi({ baseUrl, getToken }: ApiOptions) {
         req<JuryHome>("PUT", `/v1/editions/${year}/jury/startups/${startupId}/evaluation`, body),
       submit: (year: number, startupId: string, body: EvaluationSave) =>
         req<JuryHome>("POST", `/v1/editions/${year}/jury/startups/${startupId}/evaluation/submit`, body),
+    },
+    /** Customer Support dashboard (support staff; Management read-only). */
+    support: {
+      queue: (o: { edition?: number; status?: string; mine?: boolean } = {}) => {
+        const q = new URLSearchParams();
+        if (o.edition) q.set("edition", String(o.edition));
+        if (o.status) q.set("status", o.status);
+        if (o.mine) q.set("mine", "true");
+        return req<SupportQueue>("GET", `/v1/support/tickets${q.size ? `?${q}` : ""}`);
+      },
+      ticket: (id: string) => req<SupportTicketDetail>("GET", `/v1/support/tickets/${id}`),
+      create: (body: SupportTicketCreate) => req<SupportTicketDetail>("POST", "/v1/support/tickets", body),
+      acknowledge: (id: string) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/acknowledge`),
+      status: (id: string, body: SupportStatusUpdate) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/status`, body),
+      assign: (id: string, assigneeId: string | null) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/assign`, { assigneeId }),
+      note: (id: string, body: SupportNote) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/notes`, body),
+      contact: (id: string, body: SupportContactLog) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/contact`, body),
+      escalate: (id: string, reason: string) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/escalate`, { reason }),
+      raisePriority: (id: string) => req<SupportTicketDetail>("POST", `/v1/support/tickets/${id}/priority`),
+      findRequester: (q: string) => req<RequesterMatch[]>("GET", `/v1/support/requesters?q=${encodeURIComponent(q)}`),
+      alerts: () => req<SupportAlerts>("GET", "/v1/support/alerts"),
+      alertSeen: (id: string) => req<{ seen: true }>("POST", `/v1/support/alerts/${id}/seen`),
+      policy: (year: number) => req<SupportPolicy>("GET", `/v1/support/editions/${year}/policy`),
+      setPolicy: (year: number, body: SupportPolicy) => req<SupportPolicy>("PUT", `/v1/manage/editions/${year}/support-policy`, body),
     },
     volunteer: {
       myAssignment: (year: number) => req<MyVolunteerAssignment>("GET", `/v1/editions/${year}/volunteer/assignment`),

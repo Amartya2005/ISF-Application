@@ -26,7 +26,7 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-04 | Delegates get information only for 2026 (accommodation, travel, programme). No room allocation, travel booking or check-in module. | Default — awaiting Organisers |
 | TBD-05 | 2027 stays open with no deadline until Management sets one as edition data. Reapplication means submitting a 2027 application from the same account. | Default — awaiting Management |
 | TBD-06 | Seed the RQ §2 tentative programme labelled "tentative". Admin and Management edit it as content. | Default — awaiting Organisers (final content) · **built (Phase 7)** |
-| TBD-07 | Always show 112 (India's national emergency number). Organisers supply campus security, medical and control-room numbers. Escalation follows TBD-27. | Default — awaiting Organisers |
+| TBD-07 | Always show 112 (India's national emergency number). Organisers supply campus security, medical and control-room numbers. Escalation follows TBD-27. | Default — awaiting Organisers · **112 built (Phase 7–8)**; venue numbers not yet supplied |
 | TBD-08 | The Junicorn brochure's ages and 200→100 stages do **not** apply to this registration workflow. | Default — awaiting Organisers |
 | TBD-09 | No cap on applications. The selection limit is set per edition by Management (configurable, RQ §6). | Resolved by design |
 | TBD-10 | Change control: a written change request, an impact assessment and Management approval. Nothing new before the 2026 event unless it is critical. | Default — awaiting Management |
@@ -44,10 +44,10 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-22 | Pool: every startup with 2026 access plus every jury member. **No priority**: random, with the unassigned listed. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-23 | Close the assignment with a reason, then reassign manually from free volunteers. No automatic reshuffle. | Default — awaiting Management · **built (Phase 6)** |
 | TBD-24 | Admin: documents, emergency contacts, safety guidelines, static pages. Management: schedule, venues, meals, accommodation, travel, notices. | Default — awaiting Organisers · **built (Phase 7)** |
-| TBD-25 | The website links to the WhatsApp Help Desk (click-to-chat) and the app. **No separate web chat.** | Default — awaiting Organisers |
-| TBD-26 | English only for 2026. All text is externalised so other languages can be added later. | Default — awaiting Organisers |
-| TBD-27 | Emergency: acknowledge within 5 min, else escalate to the Management duty lead. High: 30 min. Normal: 2 h on event days, 1 working day otherwise. Configurable. | Default — awaiting Organisers |
-| TBD-28 | Minimum roster: 2 support staff per shift on 17–20 Dec (07:00–22:00 IST) plus 1 on call overnight. Business hours otherwise. Alerts: dashboard plus SMS to the on-duty phone. | Default — awaiting Organisers |
+| TBD-25 | The website links to the WhatsApp Help Desk (click-to-chat) and the app. **No separate web chat.** | Default — awaiting Organisers · no web chat built; WhatsApp link waits for the separate WhatsApp workstream |
+| TBD-26 | English only for 2026. All text is externalised so other languages can be added later. | Default — awaiting Organisers · Help Desk answers in English (Phase 8) |
+| TBD-27 | Emergency: acknowledge within 5 min, else escalate to the Management duty lead. High: 30 min. Normal: 2 h on event days, 1 working day otherwise. Configurable. | Default — awaiting Organisers · **partly built (Phase 8)**: per-edition windows (normal = one value, no working-day calendar); escalation goes to all Management (no duty lead or event director modelled) |
+| TBD-28 | Minimum roster: 2 support staff per shift on 17–20 Dec (07:00–22:00 IST) plus 1 on call overnight. Business hours otherwise. Alerts: dashboard plus SMS to the on-duty phone. | Default — awaiting Organisers · dashboard alerts built (Phase 8); **no roster, no SMS alerts** |
 | TBD-29 | Notices go in-app plus push only. "Authorised groups" are named lists that Management maintains. | Default — awaiting Management · **built (Phase 7)** |
 | TBD-30 | No QR check-in, meal tracking or room allocation for 2026. The module boundaries stay disabled. | Default — awaiting Organisers |
 | TBD-31 | Export is a separate permission. Admin exports the data it administers; Management exports selection and jury data; nobody else. Every export is audited and sanitised. | Default — awaiting Organisers |
@@ -73,6 +73,10 @@ Approvers: **Organisers** = GIET University with the International Startup Found
 | TBD-51 | Event documents: PDF, PNG or JPEG up to 10 MB, in a private Supabase Storage bucket, opened only through 60-second links issued after an audience check. Replaced, never edited. | Default — awaiting Organisers · **built (Phase 7)** |
 | TBD-52 | Push notifications through the Expo push service (FCM for Android, APNs for iOS), with credentials under the organisation's accounts. | Default — awaiting Organisers + Budget · **built (Phase 7)** |
 | TBD-53 | Content edits are drafts until published; a published notice may have its text corrected (audited) but never its audience; a notice reaches only devices registered when it is published. | Default — awaiting Management · **built (Phase 7)** |
+| TBD-54 | AI Help Desk (app): server-side scoped tools, the model sees only tool results as data, deterministic emergency/human/injection checks first, an output leak check, fallback on any provider failure; Vertex AI with its own service account; channel-agnostic engine. | Default — awaiting Management · **built (Phase 8)**, live model not verified |
+| TBD-55 | Emergency control: 112 first and never waits for anything; alerting the team is a second explicit tap; one open emergency per person (a new report is added to it and re-alerts); retries reuse one request id. | Default — awaiting Organisers · **built (Phase 8)** |
+| TBD-56 | Ticket lifecycle: Open → Acknowledged → In Progress → Resolved (or Acknowledged → Resolved); Resolved is final (no reopening: a new ticket instead); priority and emergency only go up; escalation is an attribute and cannot be withdrawn. | Default — awaiting Management · **built (Phase 8)** |
+| TBD-57 | Re-alerts and escalation: unacknowledged urgent tickets re-alert all support staff on an interval up to a maximum; at the window they escalate to all active Management; normal tickets are flagged overdue once; with no active support staff, Management is alerted. | Default — awaiting Organisers · **built (Phase 8)** |
 | OD-01 | WhatsApp verification uses a link code shown in the signed-in app. | **Decided** |
 | OD-02 | iOS reinstall: sign out on the first launch after any reinstall. To build before store submission (not part of the Phase 6 jury/volunteer delivery). | **Decided** · not built yet |
 | OD-03 | Maps: static map links inside venue content. No maps SDK or API. | **Decided** |
@@ -464,6 +468,42 @@ Approvers: **Organisers** = GIET University with the International Startup Found
   - On-duty alerts go to the dashboard **plus SMS to the on-duty phone**, with the DLT template registered together with the OTP template.
 - **Why:** This is the smallest roster that can meet the TBD-27 emergency window. SMS reaches staff away from a screen.
 - **Approval:** Organisers (roster and names). **Status:** Default — awaiting Organisers.
+
+### TBD-27 / TBD-28 · What Phase 8 built, and what it did not
+- **Built:** per-edition windows stored as edition data (`event_editions.support_policy`, checked by the database), changed by Management in the console and audited. Defaults: emergency 5 min, high 30 min, normal 120 min; urgent re-alerts every 1 min (emergency) or 10 min (high), at most 20 rounds. These are the recommendation above, **not approved values**.
+- **Not built, pending the organisers' answer:**
+  - The normal window is one number. The "2 h on event days, 1 working day otherwise" split and a working-day calendar are not modelled.
+  - Escalation goes to **every active Management account**, standing in for the "Management duty lead". There is no duty-lead or shift-lead role and no second step to an event director.
+  - There is no roster (TBD-28). Alerts go to every active Customer Support account on the dashboard; **no SMS alerts** are sent (no DLT template, no on-duty phone). Staff must keep the Support page open; it polls every 15 seconds.
+- **Approval:** Organisers (windows, names, roster, alert channel). No staffing commitment is implied by the built defaults.
+
+### TBD-54 · AI Help Desk design (app)
+- **Decision:**
+  - The Help Desk answers only from **official published event information** visible to the person and **their own records** (application status, startup, volunteer or assignment, jury schedule, own tickets). Each source is a server-side tool that checks the person's role and edition access itself and takes no identifier from the question.
+  - Before any model call, deterministic checks run in order: emergency wording (→ 112 and the emergency path, no model), a request for a person (→ ticket), prompt-injection or data-extraction wording (→ fixed refusal, audited).
+  - The model receives the tool results as data with fixed instructions, and must return JSON (`answer`, `outcome`). Anything else, a timeout or no configured model gives a fixed fallback answer with "Ask a person". An answer containing a phone number, email or identifier not present in the data given to it is blocked and audited.
+  - Provider: Google Vertex AI (TBD-35) with a **Help Desk-only** configuration and service account (`HELPDESK_*`), separate from ranking (FR-HD-20). `stub` is a development stand-in that is **not an AI** and is refused in production by the launch gate; `none` gives fallback answers only.
+  - The engine is channel-agnostic: a channel adapter supplies an authenticated identity. **WhatsApp is not built here**; it belongs to a separate workstream and would add its own adapter.
+- **Why:** FR-HD-05…07, -13, -20 and PRD §8.3 (scoped tools, guardrails). Deterministic checks keep emergencies and injection out of the model's hands.
+- **Built (Phase 8):** API, transcripts (append-only), tests in `helpdesk.test.ts`, browser flow `scripts/e2e_support.py`. **Not verified with a live model.**
+- **Approval:** Management (scope of answers). **Status:** Default — awaiting Management.
+
+### TBD-55 · Emergency control behaviour
+- **Decision:**
+  - The app's header has an **Emergency** button on every screen, signed in or not. Its screen shows **Call 112** first; nothing (network, sign-in, the alert) is awaited before it. Published venue numbers follow, cached on the device for offline use. No number is invented.
+  - Alerting the support team is a **second, explicit tap** (avoids accidental emergency tickets), with an optional description. Retries reuse one request id, so a retry never opens a second ticket.
+  - One open emergency per person: a new report while one is open is added to it and re-alerts staff at once.
+  - An emergency in the Help Desk chat gets the same answer (112 first) and the same ticket, without the model.
+  - If the alert cannot be recorded, the person is told plainly and still sees 112.
+- **Approval:** Organisers. **Status:** Default — awaiting Organisers.
+
+### TBD-56 · Ticket lifecycle details
+- **Decision:** The four DC-08 statuses only. Open → Acknowledged → In Progress → Resolved, or Acknowledged → Resolved. Resolution needs notes. **Resolved is final** (no reopening; the requester starts a new request). Priority and the emergency flag can be raised, never lowered. Escalation is an attribute that cannot be withdrawn. Assignment only to active Customer Support staff. Internal notes are never shown to requesters; replies are, with an in-app notification. Tickets and their history are never deleted. All enforced in the database as well as the API.
+- **Approval:** Management. **Status:** Default — awaiting Management.
+
+### TBD-57 · Re-alert and escalation mechanics
+- **Decision:** A sweep runs with the background workers. Unacknowledged emergency and high-priority tickets re-alert every support person on the configured interval, up to the configured maximum; once escalated, Management is included. At the window, the ticket is escalated automatically (recorded with no human actor). Normal tickets past their window are flagged overdue once. If no Customer Support account is active, Management is alerted instead, so an emergency is never unseen. Each ticket is locked while swept, so parallel workers never double-escalate.
+- **Approval:** Organisers (with TBD-27/28). **Status:** Default — awaiting Organisers.
 
 ### TBD-31 · Report and export permissions
 - **Decision:**

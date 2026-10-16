@@ -143,6 +143,8 @@ export type VertexOptions = {
   serviceAccount?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /** Which AI function this client serves ("ranking" or "helpdesk"); appears in errors only. */
+  purpose?: string;
 };
 
 export function vertexModel(o: VertexOptions): RankingModel {
@@ -162,9 +164,9 @@ export function vertexModel(o: VertexOptions): RankingModel {
       });
     } catch (e) {
       if (e instanceof ModelUnavailableError) throw e;
-      throw new ModelUnavailableError(`ranking service account token unavailable: ${(e as Error).message}`);
+      throw new ModelUnavailableError(`${o.purpose ?? "ranking"} service account token unavailable: ${(e as Error).message}`);
     }
-    if (!res.ok) throw new ModelUnavailableError(`ranking service account token: HTTP ${res.status}`);
+    if (!res.ok) throw new ModelUnavailableError(`${o.purpose ?? "ranking"} service account token: HTTP ${res.status}`);
     const j = (await res.json()) as { accessToken: string; expireTime: string };
     impersonated = { token: j.accessToken, until: Math.min(Date.parse(j.expireTime), Date.now() + 3600_000) - 60_000 };
     return j.accessToken;

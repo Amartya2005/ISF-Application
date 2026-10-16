@@ -582,7 +582,7 @@ export type DevSessionRequest = z.input<typeof DevSessionRequest>;
 // ---------------------------------------------------------------- post-sign-in redirects (open-redirect protection)
 /** Internal destinations each web interface may return to after sign-in or MFA. Anything else falls back. */
 export const WEB_RETURN_PATHS = ["/", "/register", "/status", "/activate", "/privacy"] as const;
-export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/jury", "/volunteers", "/content", "/notices", "/users", "/imports"] as const;
+export const CONSOLE_RETURN_PATHS = ["/", "/applications", "/ranking", "/jury", "/volunteers", "/content", "/notices", "/support", "/users", "/imports"] as const;
 
 const REDIRECT_BASE = "https://internal.invalid";
 
@@ -1105,3 +1105,170 @@ export const ContentOverview = z.object({
   canEditOperational: z.boolean(),
 });
 export type ContentOverview = z.infer<typeof ContentOverview>;
+
+// ================================================================ Phase 8: support tickets and emergencies (FR-SUP-*, FR-HD-10/11)
+export const TICKET_STATUSES = ["Open", "Acknowledged", "In Progress", "Resolved"] as const;   // DC-08: the four confirmed statuses
+export const TicketStatus = z.enum(TICKET_STATUSES);
+export type TicketStatus = z.infer<typeof TicketStatus>;
+export const TICKET_SOURCES = ["help_desk", "emergency_control", "requester", "support_staff"] as const;
+export type TicketSource = (typeof TICKET_SOURCES)[number];
+/** Human-friendly ticket reference shown to requesters and staff. */
+export const ticketRef = (n: number) => `SJ-${String(n).padStart(6, "0")}`;
+
+/**
+ * Acknowledgement windows and re-alert intervals in minutes, per edition (TBD-27). The defaults are the recommendation
+ * in docs/DECISIONS.md, awaiting organiser approval.
+ */
+export const SupportPolicy = z.object({
+  emergencyAckMinutes: z.number().int().min(1).max(10080),
+  highAckMinutes: z.number().int().min(1).max(10080),
+  normalAckMinutes: z.number().int().min(1).max(10080),
+  emergencyRealertMinutes: z.number().int().min(1).max(10080),
+  highRealertMinutes: z.number().int().min(1).max(10080),
+  maxRealerts: z.number().int().min(1).max(100),
+}).strict()
+  .refine((p) => p.emergencyAckMinutes <= p.highAckMinutes, { message: "Emergencies must be acknowledged no later than high-priority tickets", path: ["emergencyAckMinutes"] })
+  .refine((p) => p.highAckMinutes <= p.normalAckMinutes, { message: "High-priority tickets must be acknowledged no later than normal ones", path: ["highAckMinutes"] });
+export type SupportPolicy = z.infer<typeof SupportPolicy>;
+
+/** One emergency contact. 112 is always first and is not editable content (TBD-07). */
+export const EmergencyContact = z.object({ title: z.string(), phone: z.string(), available: z.string().nullish(), notes: z.string().nullish() });
+export type EmergencyContact = z.infer<typeof EmergencyContact>;
+
+/** The app's emergency control (FR-HD-10/11). `clientRequestId` makes retries of the same tap harmless. */
+export const EmergencyReport = z.object({
+  clientRequestId: z.string().uuid(),
+  message: z.string().trim().max(1000).optional(),
+});
+export type EmergencyReport = z.infer<typeof EmergencyReport>;
+export const TicketRef = z.object({ id: z.string(), ref: z.string() });
+export type TicketRef = z.infer<typeof TicketRef>;
+export const EmergencyResponse = z.object({
+  /** Shown at once, 112 first. Never wait for anything else before showing these. */
+  contacts: z.array(EmergencyContact),
+  /** Null when the alert could not be recorded: the screen then says so and still shows the contacts. */
+  ticket: TicketRef.nullable(),
+  /** How many support staff (or Management, if no support staff are active) were alerted. */
+  alerted: z.number().int(),
+  /** The requester already had an open emergency ticket: the new report was added to it and staff re-alerted. */
+  reportedAgain: z.boolean(),
+});
+export type EmergencyResponse = z.infer<typeof EmergencyResponse>;
+
+export const RequesterTicketCreate = z.object({
+  edition: z.number().int().min(2026).max(2100),
+  subject: z.string().trim().min(1, "Say briefly what you need help with").max(200),
+  description: z.string().trim().max(4000).optional(),
+});
+export type RequesterTicketCreate = z.infer<typeof RequesterTicketCreate>;
+export const TicketText = z.object({ text: z.string().trim().min(1, "Write a message").max(2000) });
+
+/** What a requester sees of their own ticket (FR-SUP-15): status and messages meant for them, never internal notes. */
+export const MyTicket = z.object({
+  id: z.string(), ref: z.string(), edition: z.number().int().nullable(), subject: z.string(), status: TicketStatus,
+  priority: z.enum(["normal", "high"]), isEmergency: z.boolean(), createdAt: z.string(), updatedAt: z.string(),
+  updates: z.array(z.object({ at: z.string(), kind: z.enum(["created", "status", "reply", "requester_note"]), text: z.string() })),
+});
+export type MyTicket = z.infer<typeof MyTicket>;
+
+export const SupportTicketSummary = z.object({
+  id: z.string(), ref: z.string(), edition: z.number().int().nullable(), subject: z.string(), status: TicketStatus,
+  priority: z.enum(["normal", "high"]), isEmergency: z.boolean(), source: z.enum(TICKET_SOURCES).nullable(),
+  requesterName: z.string(), assignee: z.object({ id: z.string(), name: z.string() }).nullable(),
+  createdAt: z.string(), ackDueAt: z.string().nullable(), acknowledgedAt: z.string().nullable(),
+  /** Still Open after its acknowledgement window. */
+  overdue: z.boolean(),
+  escalation: z.object({ to: z.literal("management"), level: z.number().int(), at: z.string(), reason: z.string(), by: z.string().nullable() }).nullable(),
+});
+export type SupportTicketSummary = z.infer<typeof SupportTicketSummary>;
+
+export const SupportTicketDetail = SupportTicketSummary.extend({
+  description: z.string().nullable(),
+  /** FR-SUP-02: the authorised requester details: identity, contact, roles and own startup. Nothing else. */
+  requester: z.object({
+    id: z.string(), name: z.string(), email: z.string().nullable(), mobile: z.string().nullable(), roles: z.array(z.enum(ROLES)),
+    startup: z.string().nullable(),
+  }).nullable(),
+  contact: z.object({ name: z.string(), phone: z.string().nullable() }).nullable(),
+  acknowledgedBy: z.string().nullable(), resolvedBy: z.string().nullable(), resolvedAt: z.string().nullable(), resolutionNote: z.string().nullable(),
+  events: z.array(z.object({ id: z.string(), kind: z.string(), actor: z.string().nullable(), at: z.string(), detail: z.record(z.string(), z.unknown()) })),
+  /** FR-HD-16: the Help Desk conversation the ticket came from (questions and answers only). */
+  transcript: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string(), at: z.string() })).nullable(),
+  alerts: z.object({ sent: z.number().int(), seen: z.number().int(), rounds: z.number().int() }),
+  canEdit: z.boolean(),
+});
+export type SupportTicketDetail = z.infer<typeof SupportTicketDetail>;
+
+export const SupportQueue = z.object({
+  tickets: z.array(SupportTicketSummary),
+  counts: z.object({ open: z.number().int(), unacknowledgedEmergencies: z.number().int(), overdue: z.number().int(), escalated: z.number().int() }),
+  staff: z.array(z.object({ id: z.string(), name: z.string() })),
+  canEdit: z.boolean(),
+});
+export type SupportQueue = z.infer<typeof SupportQueue>;
+
+export const SupportStatusUpdate = z.object({
+  status: z.enum(["In Progress", "Resolved"]),
+  note: z.string().trim().max(4000).optional(),
+}).refine((u) => u.status !== "Resolved" || !!u.note?.trim(), { message: "Write the resolution notes", path: ["note"] });
+export type SupportStatusUpdate = z.infer<typeof SupportStatusUpdate>;
+export const SupportAssign = z.object({ assigneeId: z.string().uuid().nullable() });
+export const SupportNote = z.object({ text: z.string().trim().min(1, "Write the note").max(4000), visibility: z.enum(["internal", "requester"]) });
+export type SupportNote = z.infer<typeof SupportNote>;
+export const SupportContactLog = z.object({
+  method: z.enum(["phone", "email", "in_person", "other"]),
+  outcome: z.string().trim().min(1, "Say what happened").max(2000),
+});
+export type SupportContactLog = z.infer<typeof SupportContactLog>;
+export const SupportEscalate = z.object({ reason: z.string().trim().min(1, "Give the reason").max(1000) });
+export const SupportTicketCreate = z.object({
+  edition: z.number().int().min(2026).max(2100),
+  subject: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(4000).optional(),
+  priority: z.enum(["normal", "high"]).default("normal"),
+  isEmergency: z.boolean().default(false),
+  requesterId: z.string().uuid().optional(),
+  contact: z.object({ name: z.string().trim().min(1).max(120), phone: z.string().trim().regex(/^\+?[0-9 ()-]{3,20}$/, "Use digits").optional() }).optional(),
+}).refine((t) => !!t.requesterId !== !!t.contact, { message: "Choose an account or enter the caller's name, not both", path: ["requesterId"] })
+  .refine((t) => !t.isEmergency || t.priority === "high", { message: "Emergencies are high priority", path: ["priority"] });
+export type SupportTicketCreate = z.input<typeof SupportTicketCreate>;
+export const RequesterMatch = z.object({ id: z.string(), name: z.string(), roles: z.array(z.enum(ROLES)) });
+export type RequesterMatch = z.infer<typeof RequesterMatch>;
+
+export const SupportAlert = z.object({
+  id: z.string(), ticketId: z.string(), ref: z.string(), subject: z.string(), isEmergency: z.boolean(), status: TicketStatus,
+  reason: z.enum(["emergency", "high_priority", "reminder", "escalation", "overdue", "no_support_staff", "reported_again"]),
+  round: z.number().int(), createdAt: z.string(),
+});
+export type SupportAlert = z.infer<typeof SupportAlert>;
+export const SupportAlerts = z.object({ alerts: z.array(SupportAlert), unacknowledgedEmergencies: z.number().int() });
+export type SupportAlerts = z.infer<typeof SupportAlerts>;
+
+// ================================================================ Phase 8: AI Help Desk, mobile app (FR-HD-*)
+export const HelpDeskAsk = z.object({
+  edition: z.number().int().min(2026).max(2100),
+  text: z.string().trim().min(1, "Type a question").max(1000),
+  conversationId: z.string().uuid().optional(),
+});
+export type HelpDeskAsk = z.infer<typeof HelpDeskAsk>;
+export const HELPDESK_REPLY_KINDS = ["answer", "not_found", "fallback", "emergency", "escalated", "refused"] as const;
+export const HelpDeskMessage = z.object({
+  id: z.string(), role: z.enum(["user", "assistant"]), text: z.string(), at: z.string(), kind: z.enum(HELPDESK_REPLY_KINDS).nullable(),
+});
+export type HelpDeskMessage = z.infer<typeof HelpDeskMessage>;
+export const HelpDeskReply = z.object({
+  conversationId: z.string(),
+  message: HelpDeskMessage,
+  /** Official information the answer was grounded in. */
+  sources: z.array(z.object({ title: z.string(), section: z.string() })),
+  emergency: EmergencyResponse.nullable(),
+  ticket: TicketRef.nullable(),
+  /** "stub" = development stand-in, not an AI; "none" = no assistant configured (fallback answers only). */
+  provider: z.enum(["vertex", "stub", "none"]),
+  /** Offer "Ask a person" (creates a ticket with this conversation). */
+  canAskPerson: z.boolean(),
+});
+export type HelpDeskReply = z.infer<typeof HelpDeskReply>;
+export const HelpDeskConversation = z.object({ conversationId: z.string().nullable(), messages: z.array(HelpDeskMessage) });
+export type HelpDeskConversation = z.infer<typeof HelpDeskConversation>;
+export const HelpDeskEscalate = z.object({ note: z.string().trim().max(1000).optional() });

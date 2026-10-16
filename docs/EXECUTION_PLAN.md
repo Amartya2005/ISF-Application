@@ -87,7 +87,7 @@ Rules:
 | jury | `GET /manage/editions/{y}/jury` · `POST /manage/editions/{y}/rubrics` · `POST /manage/rubrics/{id}/approve` · `POST /manage/editions/{y}/jury-assignments` · `DELETE /manage/jury-assignments/{id}` · `POST /manage/editions/{y}/pitch-slots` · `PUT\|DELETE /manage/pitch-slots/{id}` · `POST /manage/pitch-slots/{id}/start\|finish` · `GET /manage/editions/{y}/evaluations` · `POST /manage/evaluations/{id}/reopen` · jurors: `GET /editions/{y}/jury` · `GET /editions/{y}/jury/startups/{id}` · `PUT /editions/{y}/jury/startups/{id}/evaluation` · `POST …/evaluation/submit` | M4 ✅ (Phase 6) |
 | volunteers | `GET /manage/editions/{y}/volunteers` · `POST /manage/editions/{y}/volunteer-runs` · `GET /manage/volunteer-runs/{id}` · `POST /manage/volunteer-runs/{id}/approve\|discard` · `POST /manage/editions/{y}/volunteer-assignments` · `POST /manage/volunteer-assignments/{id}/reassign\|close` · participants: `GET /editions/{y}/volunteer/assignment` · `GET /editions/{y}/me/volunteer` | M4 ✅ (Phase 6) |
 | content & notices | public: `GET /public/editions/{y}/event` · `GET /public/editions/{y}/documents/{id}/link` · participants: `GET /editions/{y}/event` · `GET /editions/{y}/documents/{id}/link` · console: `GET\|POST /manage/editions/{y}/content` · `PUT /manage/content/{id}` · `POST /manage/content/{id}/publish\|discard-draft\|archive` · `GET /manage/content/{id}/versions` · `POST /manage/editions/{y}/documents` · `POST /manage/documents/{id}/archive` · `GET /manage/documents/{id}/link` · notices: `GET\|POST /manage/editions/{y}/notices` · `POST …/notices/preview` · `PUT /manage/notices/{id}` · `POST /manage/notices/{id}/withdraw` · `POST /manage/editions/{y}/notice-groups` · `POST\|DELETE /manage/notice-groups/{id}/members` · own: `POST\|DELETE /me/push-tokens` · `POST /me/notifications/{id}/read` | M5 ✅ (Phase 7) |
-| help desk & support | `POST /me/helpdesk/messages` · `POST /me/emergency` · `GET\|POST /webhooks/whatsapp` · `/support/tickets…` (assign, status, notes, escalate) | M7 |
+| help desk & support | `POST /helpdesk/messages` · `GET /helpdesk/conversation` · `POST /helpdesk/conversations/{id}/escalate` · `POST /editions/{y}/emergency` · `GET\|POST /me/tickets` · `POST /me/tickets/{id}/notes` · `GET\|POST /support/tickets` · `POST /support/tickets/{id}/acknowledge\|status\|assign\|notes\|contact\|escalate\|priority` · `GET /support/requesters` · `GET /support/alerts` · `POST /support/alerts/{id}/seen` · `GET /support/editions/{y}/policy` · `PUT /manage/editions/{y}/support-policy` · WhatsApp webhooks: separate workstream | M7 ✅ app channel (Phase 8) |
 | reports & audit | `GET /manage/reports/{id}` · `GET /admin/audit` · exports | M2–M8 |
 
 ## 5. Data model
@@ -212,9 +212,9 @@ The registration website is never descoped.
 | B-20 | Expo app shell, auth, role home screens | B-06 | AT-01 (mobile) | M6 |
 | B-21 | App feature parity + offline cache | B-18, B-19 | AT-33 | M6 |
 | B-22 | Store listings, privacy labels, submission | TBD-36 | Approved in both stores | M6 |
-| B-23 | Help Desk service: scoped tools, retrieval, emergency gate | B-18, TBD-35 | AT-26, AT-27, AT-31 | M7 |
-| B-24 | WhatsApp adapter + phone verification | WhatsApp onboarding | AT-28, AT-29 | M7 |
-| B-25 | Support console, tickets, escalation, ack timers | TBD-27/28 | AT-30, AT-32 | M7 |
+| B-23 | Help Desk service: scoped tools, retrieval, emergency gate | B-18, TBD-35 | AT-26, AT-27, AT-31 | M7 ✅ (live model pending) |
+| B-24 | WhatsApp adapter + phone verification | WhatsApp onboarding | AT-28, AT-29 | M7 · separate workstream |
+| B-25 | Support console, tickets, escalation, ack timers | TBD-27/28 | AT-30, AT-32 | M7 ✅ (windows and roster await organisers) |
 | B-26 | Load test, pen test, restore drill, runbook | All | AT-35, AT-36 | M8 |
 
 ## 9. Decisions and approvals

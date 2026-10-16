@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Product** | Startup Jathara event platform for International Startup Foundation (ISF), built by Zeny2Labs |
-| **Covers** | Everything built up to and including **Phase 7** (commits `f29884a` and `93ba3c0`, 16 Oct 2026) |
+| **Covers** | Everything built up to and including **Phase 8** (16 Oct 2026; commit in the changelog below) |
 | **Production status** | **NOT APPROVED.** Nothing is deployed to production. The API refuses a production start until [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. |
 | **Sources of truth** | The requirements document (`Startup_Jathara_Requirements_Revised_v4`) and the PRD (`ISF_Event_Operations_Platform_PRD_v0.1`). Every open point has a recorded decision in [DECISIONS.md](DECISIONS.md). |
 | **Related documents** | [ARCHITECTURE.md](ARCHITECTURE.md) (ADR-001, locked) · [PHASES.md](PHASES.md) · [EXECUTION_PLAN.md](EXECUTION_PLAN.md) · [DECISIONS.md](DECISIONS.md) · [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) · [STAGING.md](STAGING.md) · [SECURITY_FIX_2026-10-15.md](SECURITY_FIX_2026-10-15.md) · [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) · [PRIVACY_NOTICE_DRAFT.md](PRIVACY_NOTICE_DRAFT.md) |
@@ -45,6 +45,7 @@ This file is maintained with the code. A change is not finished until this guide
 | 15 Oct 2026 | `75dd860` | Phase 5: AI ranking, override reasons, two-person corrections, withdrawal, email/SMS outbox | — |
 | 15 Oct 2026 | `785a329` | Phase 6: jury evaluation and volunteer assignment | 1.0 (this guide created) |
 | 16 Oct 2026 | `f29884a`, `93ba3c0` | Phase 7: event information, documents, notices and push notifications (`93ba3c0`: a test made independent of database collation) | 1.1 |
+| 16 Oct 2026 | Phase 8 commit (see §9) | Phase 8: AI Help Desk in the app, support tickets and Customer Support dashboard, emergency control, re-alerts and escalation. WhatsApp excluded (separate workstream) | 1.2 |
 
 ---
 
@@ -164,15 +165,16 @@ Default deny: each route names one permission (`requirePermission`), and partici
 
 | Role | Permissions |
 |---|---|
-| Any signed-in user | `registration.submit`, `application.read_own`, `application.withdraw_own`, `notification.read_own`, `push.register_own` |
+| Any signed-in user | `registration.submit`, `application.read_own`, `application.withdraw_own`, `notification.read_own`, `push.register_own`, `helpdesk.use`, `support.request_own`, `emergency.report` |
 | `admin` | `import.manage`, `user.read`, `user.manage`, `role.assign`, `activation.issue`, `volunteer.read`, `volunteer.generate`, `content.read_all`, `content.manage_source` |
-| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign`, `content.read_all`, `content.manage_operational`, `notice.publish` |
+| `management` | `application.read_all`, `decision.draft`, `decision.release`, `selection_limit.configure`, `criteria.manage`, `ranking.run`, `ranking.read`, `decision.correct`, `jury.manage`, `jury.review`, `volunteer.read`, `volunteer.generate`, `volunteer.review`, `volunteer.reassign`, `content.read_all`, `content.manage_operational`, `notice.publish`, `support.review` (read-only), `support.alerts`, `support.configure` |
 | `startup_team_leader` | `volunteer.my_volunteer` |
 | `jury_member` | `jury.evaluate`, `volunteer.my_volunteer` |
 | `volunteer` | `volunteer.my_assignment` |
-| `startup_team_member`, `delegate`, `customer_support` | no role-specific permissions yet. Members and delegates use the event information and notices their edition access and audiences allow; Customer Support comes in Phase 8 |
+| `customer_support` | `support.handle`, `support.alerts` |
+| `startup_team_member`, `delegate` | no role-specific permissions. They use the event information, notices, Help Desk and support their edition access and audiences allow |
 
-The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Event information is split by type (TBD-24): `content.manage_source` covers documents, emergency contacts, safety guidelines and pages; `content.manage_operational` covers the schedule, venues, food, accommodation and travel. The service checks the type on every write. Source: `apps/api/src/platform/permissions.ts`.
+The Admin has **no** Management permissions unless separately granted the `management` role (FR-IAM-06). Event information is split by type (TBD-24): `content.manage_source` covers documents, emergency contacts, safety guidelines and pages; `content.manage_operational` covers the schedule, venues, food, accommodation and travel. The service checks the type on every write. The Admin has no support permissions. `emergency.report` is deliberately not gated on a role or edition access (TBD-55). Source: `apps/api/src/platform/permissions.ts`.
 
 ### 4.4 Audit
 
@@ -188,6 +190,7 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 - `AUTH_MODE=supabase`, staff MFA on, `CORS_ORIGINS` HTTPS-only;
 - the privacy notice version is not a draft;
 - `RANKING_PROVIDER=vertex` (not the stub), no `log` message or push provider, no `DEV_NOW`;
+- `HELPDESK_PROVIDER=vertex` (not the stub, which is not an AI, or `none`);
 - `STORAGE_PROVIDER=supabase` (the database document store is for development only);
 - `LAUNCH_APPROVED=true`, a human attestation set only after [LAUNCH_CHECKLIST.md](LAUNCH_CHECKLIST.md) is signed off. It is never set in staging, CI, `.env.example` or `.env`.
 
@@ -199,7 +202,8 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 | Function hijacking | Migration 0006 and every later function pin `search_path = public, pg_temp`. |
 | Open redirects | Any return path from a URL goes through `safeReturnPath` with an allow-list (`WEB_RETURN_PATHS`, `CONSOLE_RETURN_PATHS`). |
 | CSV/formula injection | Imports reject formula prefixes; any export must use `platform/csv-export.ts`. |
-| Rate limits | Registration and activation are rate-limited per minute (configurable). |
+| Rate limits | Registration, activation and Help Desk questions are rate-limited per minute (configurable). The emergency endpoint is never rate-limited. |
+| AI Help Desk | Scoped server-side tools only; deterministic emergency, human-request and injection checks before the model; structured output; answers containing contact details or identifiers not in the data given to the model are blocked and audited (TBD-54). |
 | Files | Uploads are checked against their declared type (PDF, PNG, JPEG; 10 MB). Files are never public: a viewer gets a 60-second link after an audience check; a document outside their audience is "not found". |
 | Untrusted text | Event information and notices are shown as plain text, never as HTML; map links must be `https://`. |
 | Time | All dates are shown in IST (Asia/Kolkata). `DEV_NOW` pins the clock in local development only. |
@@ -224,7 +228,8 @@ Errors are RFC 9457 problem responses with a stable `code` (for example `no_edit
 | Notices and push | `notices`, `notice_groups`, `notice_group_members`, `push_tokens` | A notice keeps its audience, edition and push choice; withdrawn notices are final; group members must take part in the edition; one account per device token |
 | Messages | `notifications` | In-app and outbox (email, SMS, push) with status (`queued`, `sent`, `failed`, `cancelled`), provider reference, receipt check and idempotency key; notice rows link to their notice |
 | Audit | `audit_events` | Append-only (DC-13) |
-| Later phases (tables exist, features not built) | `helpdesk_conversations`, `helpdesk_messages`, `support_tickets`, `ticket_events` | Integrity rules already enforced and tested (DC-08, DC-11) |
+| Help Desk | `helpdesk_conversations`, `helpdesk_messages` | One conversation per person, channel and edition; app conversations need an account; messages append-only (deleted only by retention) |
+| Support | `support_tickets`, `ticket_events`, `support_alerts`; `event_editions.support_policy` | Four statuses only (DC-08); lifecycle, final resolution, priority/emergency only raised, escalation never withdrawn, staff-only acknowledgement and assignment (trigger); history and alerts append-only; one alert per recipient, reason and round; policy checked |
 
 ### 5.2 Migrations
 
@@ -243,6 +248,7 @@ Migrations are **forward-only and checksummed**: `migrate.ts` refuses to run if 
 | `0009_ranking_worker_set_role.sql` | Let the non-superuser API role `SET ROLE sj_ranking_worker` | ✅ |
 | `0010_jury_volunteers.sql` | Jury and volunteer rules, rubric v1 draft, history | ✅ (15 Oct 2026) |
 | `0011_event_content_notices.sql` | Event information drafts and versions, documents, groups, notice rules, push devices and delivery, tentative 2026 programme (drafts) | ❌ not yet (applied with the staging deployment) |
+| `0012_helpdesk_support.sql` | Support policy per edition, Help Desk conversations and messages, ticket model and lifecycle trigger, append-only history, support alerts | ❌ not yet (staging changes need authorisation) |
 
 How to apply to staging is in [STAGING.md](STAGING.md).
 
@@ -300,10 +306,10 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 ### 6.6 Mobile app
 
 - **Status:** built for Android, iOS and web export; **not submitted to stores** (needs organisation-owned accounts, TBD-36).
-- Screens: sign-in (email or mobile), activation, role-aware home, event information (Phase 7), registration, per-year status and withdrawal, messages and notices with read marking (Phase 7), jury (Phase 6), volunteer (Phase 6). Staff are pointed to the console.
+- Screens: sign-in (email or mobile), activation, role-aware home, event information (Phase 7), registration, per-year status and withdrawal, messages and notices with read marking (Phase 7), jury (Phase 6), volunteer (Phase 6), **Emergency, Help and My requests (Phase 8)**. An Emergency button is in the header of every screen. Staff are pointed to the console.
 - **Push** (Phase 7): after sign-in the app asks for notification permission and registers its Expo push token; sign-out removes it. Needs a development or store build with an EAS project; it quietly does nothing in web builds, simulators and Expo Go on Android.
 - **Not built:** sign-out on the first launch after a reinstall (OD-02). Required before store submission.
-- **Tests:** `apps/mobile/lib/*.test.ts` (keychain chunking, scoring helpers); browser: `e2e_mobile.py`, `e2e_jury_volunteers.py`; real devices: [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run on live staging).
+- **Tests:** `apps/mobile/lib/*.test.ts` (keychain chunking, scoring helpers, emergency contacts, offline cache and retries); browser: `e2e_mobile.py`, `e2e_jury_volunteers.py`; real devices: [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run on live staging).
 
 ### 6.7 AI ranking
 
@@ -393,6 +399,35 @@ Each feature lists its status, rules, screens, API and tests. "Decision" means a
 - **Devices:** the app registers its token after sign-in (`POST /v1/me/push-tokens`) and removes it at sign-out; a token belongs to the account last signed in on that device.
 - **Console:** Notices page (compose, recipient check, delivery figures, correct, withdraw, groups). **App:** notices in Messages, marked read when opened.
 - **Tests:** `notices.test.ts` (17 cases including Expo request format, receipts and permanent failures); browser: `e2e_event_notices.py`.
+
+### 6.14 Emergency control (Phase 8)
+
+- **Status:** built; venue emergency numbers not yet supplied (TBD-07, awaiting Organisers).
+- **Always reachable** (FR-HD-10, TBD-55): an Emergency button in the header of every app screen, signed in or not. Its screen shows **Call 112** first; nothing is awaited before it can be pressed, offline included. The Admin-published emergency contacts follow, cached on the device from the last load. No number is ever invented.
+- **Alerting the team** (FR-HD-11, AT-31): a second, explicit tap with an optional description raises a high-priority emergency ticket and alerts every active Customer Support account (Management if none is active). The response always carries the contacts, 112 first; if the ticket cannot be recorded the person is told and still sees 112. Retries reuse one request id (same ticket). One open emergency per person: a new report is added to it and re-alerts at once. Concurrent reports from one person open one ticket (advisory lock).
+- **Help Desk path:** emergency wording in the chat gets the same 112-first answer and ticket without any model call.
+- **Tests:** `support.test.ts` (emergency control), `helpdesk.test.ts` (AT-31), `apps/mobile/lib/emergency.test.ts`; browser: `e2e_support.py` (offline, then online).
+
+### 6.15 AI Help Desk in the app (Phase 8)
+
+- **Status:** built; **live model not verified** (Vertex AI account, TBD-35). The development `stub` is not an AI and is labelled as such in the app. **WhatsApp is not part of this build** (separate workstream).
+- **Sources** (FR-HD-05…07, -13, -14, TBD-54): server-side tools, each checking role and edition access and taking no identifier from the question: published event information for the person's audience, emergency contacts, and the person's own application status, startup, volunteer or assignment, jury schedule (own evaluations' state only) and tickets. No tool reads AI ranking data, others' scores, contacts or applications.
+- **Order of checks:** emergency wording → 112 and the emergency path; "talk to a person" → ticket; injection or data-extraction wording → fixed refusal (audited `helpdesk.request_refused`); then the tools and the model.
+- **Model:** fixed instructions; tool results passed as data; JSON output (`answer`, `outcome`). Invalid output, timeout, provider error or no provider → fallback answer with "Ask a person". Output leak check: a phone number, email or identifier not present in the data given → blocked (audited `helpdesk.output_blocked`). Separate `HELPDESK_*` configuration and service account (FR-HD-20).
+- **Ask a person** (FR-HD-08, AT-30): one open ticket per conversation, with the transcript (questions and answers only) visible to support.
+- **Records:** conversations per person and edition; messages append-only; per-person rate limit.
+- **Tests:** `helpdesk.test.ts` (24: own-data answers, isolation between people and editions, injection, blocked leaks, provider failures, rate limit, escalation, emergency); browser: `e2e_support.py`.
+
+### 6.16 Support tickets and the Customer Support dashboard (Phase 8)
+
+- **Status:** built. Windows, escalation contacts and roster awaiting Organisers (TBD-27, TBD-28).
+- **Raising tickets:** from the app ("My requests" or the Help Desk), from the emergency control, or by support staff for a caller or walk-in (FR-SUP-14), linked to an account only by exact email or mobile match.
+- **Lifecycle** (DC-08, TBD-56, AT-32): Open → Acknowledged → In Progress → Resolved, or Acknowledged → Resolved. Concurrent acknowledgements: one succeeds, the other gets 409. Resolution needs notes and is final. Priority and the emergency flag only go up. Assignment only to active Customer Support. Escalation to Management is an attribute that cannot be withdrawn. Database trigger plus API.
+- **Workspace** (FR-SUP-02…11): requester name, email, mobile, roles and own startup only (every view audited `support.ticket_viewed`); description; Help Desk transcript; full history; internal notes; replies to the requester (in-app notification); contact log; manual escalation; priority raise.
+- **Alerts and escalation** (FR-SUP-13, TBD-27, TBD-57): new urgent tickets alert every support person; a worker sweep re-alerts unacknowledged urgent tickets (defaults: emergency every 1 min, high every 10 min, at most 20 rounds), escalates them to all active Management at the window (defaults 5 and 30 min; recorded with no human actor) and flags normal tickets overdue once (default 120 min). Each ticket is row-locked while swept. Defaults are configuration awaiting approval; no working-day calendar, duty-lead role or SMS alerts are built.
+- **Roles:** Customer Support works tickets; Management reviews read-only, sees alerts and sets the windows per edition (audited); the Admin has no access. Requesters see only their own tickets, status changes and replies, never internal notes.
+- **Console:** Support page (queue, alert banner with 15-second polling, raise for a caller, windows for Management) and ticket page. **App:** My requests.
+- **Tests:** `support.test.ts` (26, including concurrent acknowledgement, concurrent sweeps and the acknowledge-versus-sweep race); browser: `e2e_support.py`.
 
 ---
 
@@ -501,13 +536,34 @@ All routes are under `/v1`, JSON, with a Bearer token unless marked public. Guar
 | POST | `/v1/manage/notices/:id/withdraw` | `notice.publish` |
 | POST / DELETE | `/v1/manage/editions/:year/notice-groups`, `/v1/manage/notice-groups/:id/members`, `/v1/manage/notice-groups/:id/members/:userId` | `notice.publish` |
 
+### Help Desk, own tickets and emergency
+
+| Method | Path | Guard |
+|---|---|---|
+| POST | `/v1/helpdesk/messages` | `helpdesk.use` + account (rate-limited per person) |
+| GET | `/v1/helpdesk/conversation?edition=` | `helpdesk.use` + account (own conversation only) |
+| POST | `/v1/helpdesk/conversations/:id/escalate?edition=` | `helpdesk.use` + account (own conversation only) |
+| POST | `/v1/editions/:year/emergency` | `emergency.report` (no edition or role gate, never rate-limited) |
+| GET / POST | `/v1/me/tickets` | `support.request_own` + account |
+| POST | `/v1/me/tickets/:id/notes` | `support.request_own` (own tickets only) |
+
+### Customer Support and Management
+
+| Method | Path | Permission |
+|---|---|---|
+| GET | `/v1/support/tickets`, `/v1/support/tickets/:id`, `/v1/support/editions/:year/policy` | `support.handle` or `support.review` |
+| POST | `/v1/support/tickets`, `/:id/acknowledge`, `/status`, `/assign`, `/notes`, `/contact`, `/escalate`, `/priority` | `support.handle` |
+| GET | `/v1/support/requesters?q=` (exact email or mobile) | `support.handle` |
+| GET / POST | `/v1/support/alerts`, `/v1/support/alerts/:id/seen` | `support.alerts` (own alerts only) |
+| PUT | `/v1/manage/editions/:year/support-policy` | `support.configure` |
+
 Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `packages/client/src/index.ts`.
 
 ---
 
 ## 8. Background workers
 
-- Three jobs: **AI ranking runs**, the **email/SMS/push outbox**, and (with `PUSH_PROVIDER=expo`) an **Expo receipt check** about once a minute. The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
+- Four jobs: **AI ranking runs**, the **email/SMS/push outbox**, (with `PUSH_PROVIDER=expo`) an **Expo receipt check** about once a minute, and the **support sweep** (re-alerts, automatic escalation, overdue flags; one row lock per ticket). The domain tables are the queues (`ranking_runs`, `notifications`), claimed with `FOR UPDATE SKIP LOCKED`, so several workers can run side by side.
 - They run inside the API process (`RUN_WORKERS=true`) or as a separate process (`pnpm --filter @sj/api start:worker`) for hosts that throttle CPU between requests.
 - At start-up the workers check that the database user can switch to `sj_ranking_worker` and log an error if not (the problem migration 0009 fixed on staging).
 
@@ -517,17 +573,19 @@ Request and response shapes: `packages/contracts/src/index.ts`. Typed calls: `pa
 
 | Layer | What | Where |
 |---|---|---|
-| API integration and unit | Vitest on **real PostgreSQL**, a fresh database per test file. Every permission and rule has a test; tests cite PRD acceptance tests (AT-xx). | `apps/api/test/*.test.ts` (25 files) |
-| Mobile unit | Pure app logic: keychain chunking, scoring helpers | `apps/mobile/lib/*.test.ts` |
+| API integration and unit | Vitest on **real PostgreSQL**, a fresh database per test file. Every permission and rule has a test; tests cite PRD acceptance tests (AT-xx). | `apps/api/test/*.test.ts` (27 files) |
+| Mobile unit | Pure app logic: keychain chunking, scoring helpers, emergency contacts and retries | `apps/mobile/lib/*.test.ts` |
 | Browser end-to-end | Playwright (Python) against the real API, website, console and the app's web build | `scripts/e2e_*.py` |
 | Real devices | Session, refresh, sign-out, MFA, push and event-information checks on Android and iOS (D1–D14) | [DEVICE_TEST_PROTOCOL.md](DEVICE_TEST_PROTOCOL.md) (not yet run against live staging) |
 | Staging server side | OTP sessions, refresh, revocation, linking refusal, TOTP | `pnpm --filter @sj/api staging:verify` (needs staging secrets; not yet run) |
 
-**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database), `e2e_event_notices.py` (event information, documents and notices across console, website and app; needs a freshly seeded database). Run commands are in the README.
+**Browser flows:** `e2e_smoke.py` (website + Management), `e2e_admin.py` (import → activation), `e2e_phone.py` (mobile-number sign-in), `e2e_redirect.py` (open-redirect protection), `e2e_mfa.py` (staff MFA), `e2e_mobile.py` (app at phone size), `e2e_ranking.py` (ranking → override → release → two-person correction; needs a pinned clock), `e2e_jury_volunteers.py` (jury and volunteers in console and app; needs a freshly seeded database), `e2e_event_notices.py` (event information, documents and notices across console, website and app; needs a freshly seeded database), `e2e_support.py` (emergency offline then online, Help Desk refusal and escalation, acknowledge to resolve, Management read-only, Admin no access; needs `HELPDESK_PROVIDER=stub` and a freshly seeded database). Run commands are in the README.
 
 **CI** (every push to `main`): frozen-lockfile install, typecheck of all workspaces, API tests on PostgreSQL, mobile unit tests, production builds, mobile web bundle. The browser flows run locally, not in CI.
 
-**Last recorded verification (16 Oct 2026, commit `93ba3c0`):** 384 of 384 API tests and 8 of 8 mobile tests passed; typecheck, builds and the mobile web export passed; all 9 browser flows passed against fresh databases; GitHub Actions run 38849278393 passed. (The first CI run on `f29884a` failed on one assertion that depended on database collation; the test now sorts in code.)
+**Last recorded verification (16 Oct 2026, Phase 8, before commit):** 435 of 435 API tests and 15 of 15 mobile tests passed; typecheck, frozen-lockfile install, builds and the mobile web export passed; all 10 browser flows (the 9 earlier ones plus `e2e_support.py`) passed, each against a fresh database. CI result: see the follow-up entry.
+
+**Previous (16 Oct 2026, commit `93ba3c0`):** 384 API and 8 mobile tests; 9 browser flows; GitHub Actions run 38849278393 passed.
 
 ---
 
@@ -550,7 +608,7 @@ Development staff sign-ins (dev mode only): `manager@dev.local`, `manager2@dev.l
 
 ### 10.2 Staging and production
 
-- **Staging:** Supabase project `startup-jathara-staging` (ref `chiafggvergjwliqvlwv`, ISF organisation, Mumbai, PostgreSQL 17). Migrations 0001–0010 are applied with matching checksums; 0011 (Phase 7) is not applied yet, and the private document bucket does not exist yet. The API, website and console are **not hosted yet**; secrets and auth settings are still to be configured. Details and remaining steps: [STAGING.md](STAGING.md). The staging verifier only accepts approved project refs.
+- **Staging:** Supabase project `startup-jathara-staging` (ref `chiafggvergjwliqvlwv`, ISF organisation, Mumbai, PostgreSQL 17). Migrations 0001–0010 are applied with matching checksums; 0011 (Phase 7) and 0012 (Phase 8) are not applied yet, and the private document bucket does not exist yet. The API, website and console are **not hosted yet**; secrets and auth settings are still to be configured. Details and remaining steps: [STAGING.md](STAGING.md). The staging verifier only accepts approved project refs.
 - **Production:** does not exist. Recommended hosting (TBD-46, awaiting budget): Cloud Run asia-south1 for the API and workers, Vercel for the web apps, Supabase ap-south-1. Accounts must be organisation-owned (TBD-36).
 
 ### 10.3 Environment variables
@@ -568,6 +626,7 @@ Development staff sign-ins (dev mode only): `manager@dev.local`, `manager2@dev.l
 | `RANKING_PROVIDER`, `RANKING_VERTEX_PROJECT`, `RANKING_VERTEX_LOCATION`, `RANKING_VERTEX_MODEL`, `RANKING_VERTEX_ACCESS_TOKEN`, `RANKING_VERTEX_SERVICE_ACCOUNT` | AI ranking provider |
 | `NOTIFY_EMAIL_PROVIDER`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `NOTIFY_EMAIL_FROM` | Email outbox (`none` keeps messages queued) |
 | `NOTIFY_SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_RESULT`, `MSG91_TEMPLATE_CORRECTION`, `MSG91_TEMPLATE_ACTIVATION`, `MSG91_TEMPLATE_ASSIGNMENT` | SMS outbox with DLT template ids |
+| `HELPDESK_PROVIDER`, `HELPDESK_VERTEX_PROJECT`, `HELPDESK_VERTEX_LOCATION`, `HELPDESK_VERTEX_MODEL`, `HELPDESK_VERTEX_ACCESS_TOKEN`, `HELPDESK_VERTEX_SERVICE_ACCOUNT`, `HELPDESK_RATE_LIMIT` | AI Help Desk: `stub` (development, not an AI; refused in production), `none` (fallback answers only; refused in production) or `vertex` with its own service account. Questions per person per minute (default 20) |
 | `PUSH_PROVIDER`, `EXPO_ACCESS_TOKEN` | Push for notices: `none`, `log` (development only, refused in production) or `expo`. The access token is a server-side secret |
 | `STORAGE_PROVIDER`, `STORAGE_BUCKET`, `FILE_LINK_SECRET` | Documents: `database` (development only, refused in production) or `supabase` (private bucket, default `event-documents`). `FILE_LINK_SECRET` signs the development store's links |
 | `DEV_NOW` | Development only: pins the API clock |
@@ -591,6 +650,7 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 | Volunteers | TBD-22, TBD-23, TBD-47, TBD-49 |
 | Event information and notices | TBD-06 (tentative programme as drafts), TBD-07 (112 first), TBD-24 (who edits what), TBD-29 (in-app plus push, groups), TBD-51 (documents), TBD-52 (Expo push), TBD-53 (drafts, corrections, push timing) |
 | Imports | TBD-41 (column set v1) |
+| Help Desk, support and emergency | TBD-07 (112 first; venue numbers awaiting Organisers), TBD-27 (windows as configuration; partly: no working-day calendar, duty lead or event director), TBD-54, TBD-55, TBD-56, TBD-57. TBD-28 roster and SMS alerts **not built** |
 
 ---
 
@@ -598,7 +658,9 @@ Every former TBD has a recorded default in [DECISIONS.md](DECISIONS.md); most aw
 
 | Item | Phase | Blocked on |
 |---|---|---|
-| AI Help Desk (app and WhatsApp), Customer Support dashboard, emergency escalation | 8 | WhatsApp onboarding; TBD-07, TBD-27, TBD-28 |
+| WhatsApp Help Desk channel | separate workstream | Owned by another team; not in this repository's Phase 8 |
+| Live Vertex AI Help Desk and an automated Help Desk evaluation | — | Vertex AI account (TBD-35) |
+| Organiser-approved windows, escalation contacts (duty lead, event director), working-day calendar, support roster and SMS alerts to on-duty staff | — | Organisers (TBD-27, TBD-28); DLT template for alert SMS |
 | Offline cache, reports and exports, audit view | 9 | TBD-31 |
 | Security review, load test, restore drill, store submission, production release | 10 | Accounts (TBD-36), budget (TBD-46) |
 | Sign-out after app reinstall (OD-02) | before store submission | — |

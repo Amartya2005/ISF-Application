@@ -1,4 +1,5 @@
-// Background work in the same codebase as the API (ADR-001): AI ranking runs and the email/SMS outbox. The domain
+// Background work in the same codebase as the API (ADR-001): AI ranking runs, the email/SMS/push outbox and (Phase 8)
+// the support acknowledgement sweep that re-alerts and escalates unacknowledged tickets. The domain
 // tables are the queues (ranking_runs, notifications), claimed with FOR UPDATE SKIP LOCKED, so several worker
 // processes can run safely side by side.
 import type { Config } from "./config.js";
@@ -6,6 +7,7 @@ import type { Sql } from "./db/client.js";
 import { checkPushReceipts, dispatchOutbox, expoPushSender, logSender, msg91Sender, smtpSender, type ExpoPushOptions, type MessageSender } from "./modules/notifications/outbox.js";
 import { stubModel, vertexModel, type RankingModel } from "./modules/ranking/model.js";
 import { processNextRankingRun } from "./modules/ranking/worker.js";
+import { sweepSupport } from "./modules/support/sweep.js";
 
 export function rankingModelFrom(config: Config): RankingModel {
   return config.ranking.provider === "vertex" ? vertexModel(config.ranking.vertex!) : stubModel();
@@ -56,6 +58,10 @@ export function startWorkers(o: {
       if (!stopped) {
         const r = await dispatchOutbox(o.sql, o.senders, o.clock());
         if (r.sent || r.failed || r.retrying) o.log.info(`outbox: ${r.sent} sent, ${r.retrying} retrying, ${r.failed} failed`);
+      }
+      if (!stopped) {
+        const s = await sweepSupport(o.sql, o.clock());
+        if (s.escalated || s.reminders || s.overdue) o.log.info(`support sweep: ${s.escalated} escalated, ${s.reminders} re-alerted, ${s.overdue} overdue`);
       }
       if (!stopped && o.pushReceipts && Date.now() - lastReceipts > 60_000) {
         lastReceipts = Date.now();

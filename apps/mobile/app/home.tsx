@@ -42,6 +42,7 @@ export default function Home() {
 
   return (
     <Screen>
+      <Button title="Emergency: call 112 or alert the event team" onPress={() => router.push(me.editionAccess[0] ? { pathname: "/emergency", params: { year: String(me.editionAccess[0]) } } : "/emergency")} />
       <H1>{name ? `Hello, ${name}` : "Welcome"}</H1>
       {roles.length > 0 && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -59,6 +60,12 @@ export default function Home() {
             {apps.startup && <P>Startup: <Text style={{ fontWeight: "700" }}>{apps.startup.name}</Text></P>}
             <P muted small>Schedule, venues, food, accommodation, safety and emergency contacts, as the event team publishes them. Notices arrive in Messages.</P>
             <Button title="Programme and event information" onPress={() => router.push({ pathname: "/event", params: { year: String(year) } })} />
+            {me.permissions.includes("helpdesk.use") && (
+              <Button title="Help: ask a question" kind="secondary" onPress={() => router.push({ pathname: "/help", params: { year: String(year) } })} />
+            )}
+            {me.permissions.includes("support.request_own") && (
+              <Button title="My requests" kind="secondary" onPress={() => router.push({ pathname: "/requests", params: { year: String(year) } })} />
+            )}
             {me.permissions.includes("jury.evaluate") && (
               <Button title={`Jury: score your startups (${year})`} onPress={() => router.push({ pathname: "/jury", params: { year: String(year) } })} />
             )}

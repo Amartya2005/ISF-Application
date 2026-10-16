@@ -10,6 +10,7 @@ The API enforces this list in code. With `NODE_ENV=production` it refuses to sta
 - the privacy notice version is no longer a `draft-*` version (`PRIVACY_NOTICE_VERSION` in `packages/contracts`);
 - AI ranking uses a real model (`RANKING_PROVIDER=vertex`), never the development stub, which is not an AI;
 - no message provider is set to `log` (which reports messages as sent without sending them), and `DEV_NOW` is not set;
+- the Help Desk uses a real model (`HELPDESK_PROVIDER=vertex`), never the development stub (not an AI) or `none` (fallback answers only);
 - `LAUNCH_APPROVED=true` is set. Set it **only** after every item below is checked and signed off.
 
 ## A. Accounts and environments (TBD-36, TBD-46)
@@ -52,6 +53,8 @@ Not run yet: the staging project now exists (`startup-jathara-staging`), but its
 - [ ] **Result and activation email through Amazon SES**: a release and an activation code reach Gmail, Outlook and an institutional inbox, not spam, and show as `sent` in the console. SES production access granted; SPF, DKIM and DMARC pass.
 - [ ] **Result and activation SMS through MSG91**: DLT templates for the result, correction and activation messages are registered and their ids configured. Messages arrive on Jio, Airtel, Vi and BSNL. Failures show as `failed` in the console after the retries.
 - [ ] **Document storage** (TBD-51): a **private** Supabase Storage bucket `event-documents` exists (not public); the API runs with `STORAGE_PROVIDER=supabase`. An Admin uploads a jury-only PDF; a juror opens it through the app; a volunteer and the public get "not found"; a copied link stops working after 60 seconds.
+- [ ] **Help Desk model** (TBD-35, TBD-54): a Vertex AI model in asia-south1 with a Help Desk-only service account (`HELPDESK_VERTEX_SERVICE_ACCOUNT`, separate from ranking). An evaluation on staging with the real model shows: answers grounded only in published information and the person's own records; injection and data-extraction attempts refused; emergency wording routed to 112 without the model; no other person's contact details in any answer. Keep the transcript set as evidence. Not built yet: an automated Help Desk evaluation script like `ranking:eval`.
+- [ ] **Emergency and support on staging** (Phase 8): migrations 0011 and 0012 applied; a test emergency from a real phone shows 112 first (also in airplane mode), reaches the Support page within one poll, re-alerts and escalates to Management at the configured window, and is acknowledged and resolved. `112` dials from the app on a real Android and iPhone.
 - [ ] **Push notifications** (TBD-52): an EAS project with FCM credentials and an APNs key under the organisation's accounts; `PUSH_PROVIDER=expo` (and `EXPO_ACCESS_TOKEN` if enhanced push security is on). With development or store builds on a real Android phone and a real iPhone: a jury-only notice arrives as a push on a juror's phone and not on a volunteer's; the console shows it as handed to the push service; uninstalling the app leads to a `failed` receipt and the device being disabled.
 
 ## C. Decision approvals ([docs/DECISIONS.md](/docs/DECISIONS.md))
@@ -68,7 +71,8 @@ Every TBD now has a recommended decision, and the code follows it. **None has be
 **Before the phase that uses them:**
 
 - [ ] **Organisers:** activation delivery and 72 h validity (TBD-13); import column set v1 signed off on a real sample (TBD-41); team-member onboarding after selection (TBD-16); delegate scope and no QR/allocation modules (TBD-04, TBD-30); content ownership (TBD-24); Help Desk on the website as a WhatsApp link (TBD-25); English only (TBD-26); export permissions (TBD-31); descope checkpoints (OD-05).
-- [ ] **Organisers, before Phase 8:** emergency contacts (TBD-07), escalation windows (TBD-27), support roster (TBD-28).
+- [ ] **Organisers, before Phase 8 goes live (built 16 Oct 2026):** venue emergency numbers (campus security, medical, control room), published by the Admin as emergency contacts (TBD-07); acknowledgement windows and escalation contacts, set by Management per edition (TBD-27; built defaults 5/30/120 min are not approved); support roster, on-call cover and alert channel (TBD-28; only dashboard alerts are built, no SMS); emergency control behaviour (TBD-55) and re-alert mechanics (TBD-57). **Management:** Help Desk answer scope (TBD-54) and ticket lifecycle (TBD-56).
+- [ ] **WhatsApp Help Desk** (separate workstream): not part of this repository's Phase 8 delivery. Track its readiness, provider account (TBD-35/36) and the website link (TBD-25) in that workstream.
 - [ ] **Management, before results are released (by 20 Nov, TBD-40):** criteria set approved by 6 Nov (TBD-01); result channels and wording (TBD-14); override reasons (TBD-18); correction and withdrawal policy (TBD-37), with the correction process built; scores never shared (TBD-44).
 - [ ] **Management, later phases:** TBD-05, TBD-10, TBD-17, TBD-29, TBD-42.
 - [ ] **Management, before the event (jury and volunteers, built in Phase 6):** approve a jury rubric version in the console (TBD-43; jurors cannot score until then) and the rubric-change rule (TBD-50); pitch assignment and the "currently pitching" operators (TBD-20, TBD-21); volunteer pool, roles and reassignment rules (TBD-22, TBD-23, TBD-47); assignment message wording and a registered DLT template for `MSG91_TEMPLATE_ASSIGNMENT` (TBD-48); the contact fields shared between volunteers and targets, also for the privacy notice (TBD-49, with Legal).
@@ -106,6 +110,7 @@ Only when every row above is filled in: set `LAUNCH_APPROVED=true` in the produc
 - `CORS_ORIGINS` is HTTPS-only;
 - the privacy notice version is not a draft;
 - `RANKING_PROVIDER=vertex` (not the stub), no `log` message or push provider, no `DEV_NOW`;
+- `HELPDESK_PROVIDER=vertex` (not the stub or `none`);
 - `STORAGE_PROVIDER=supabase` (the database document store is for development only);
 - `LAUNCH_APPROVED=true`.
 

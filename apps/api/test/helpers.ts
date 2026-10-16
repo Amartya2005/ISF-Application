@@ -1,6 +1,7 @@
 // Integration-test harness: every test file gets its own freshly migrated PostgreSQL database.
 // Needs a reachable server: TEST_DATABASE_URL (admin connection) or the local one from scripts/dev-db.sh.
 import type { FileStore } from "../src/modules/content/storage.js";
+import type { HelpDeskModel } from "../src/modules/helpdesk/model.js";
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
 import type { Role } from "@sj/contracts";
@@ -55,6 +56,8 @@ export async function createTestApp(
   opts: {
     now?: Date; requireStaffMfa?: boolean; corsOrigins?: string[]; verifier?: TokenVerifier; identity?: IdentityResolver;
     config?: Partial<Config>; automated?: { email: boolean; sms: boolean }; fileStore?: FileStore;
+    /** Phase 8: the Help Desk model for this app (undefined = the stub from config; null = no assistant). */
+    helpdeskModel?: HelpDeskModel | null;
   } = {},
 ) {
   const db = await createTestDb();
@@ -64,11 +67,12 @@ export async function createTestApp(
     requireStaffMfa: opts.requireStaffMfa ?? false, corsOrigins: opts.corsOrigins ?? [], logLevel: "silent", registrationRateLimit: 1000, activationTtlHours: 72, activationRateLimit: 1000,
     runWorkers: false, publicWebUrl: "https://web.test", ranking: { provider: "stub" }, email: { provider: "none" }, sms: { provider: "none" },
     push: { provider: "none" }, storage: { provider: "database", bucket: "event-documents", fileLinkSecret: SECRET },
+    helpdesk: { provider: "stub", rateLimit: 1000 },
     ...opts.config,
   };
   const app = await buildApp({
     config, sql: db.sql, verifier: opts.verifier ?? devVerifier(SECRET), identity: opts.identity ?? devIdentityResolver,
-    clock: () => current, logger: false, automated: opts.automated, fileStore: opts.fileStore,
+    clock: () => current, logger: false, automated: opts.automated, fileStore: opts.fileStore, helpdeskModel: opts.helpdeskModel,
   });
 
   const t = {

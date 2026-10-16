@@ -10,6 +10,8 @@ import {
   ReopenRequest, RubricCreate,
   ArchiveRequest, ContentCreate, ContentUpdate, DocumentUpload, GroupMembersAdd, NoticeAudience, NoticeCreate, NoticeEdit, NoticeGroupCreate,
   NoticeWithdraw, PublishRequest, PushTokenRegister,
+  EmergencyReport, HelpDeskAsk, HelpDeskEscalate, RequesterTicketCreate, SupportAssign, SupportContactLog, SupportEscalate, SupportNote,
+  SupportPolicy, SupportStatusUpdate, SupportTicketCreate, TICKET_STATUSES, TicketText,
 } from "@sj/contracts";
 import { z } from "zod";
 import type { Config } from "./config.js";
@@ -41,10 +43,16 @@ import {
   approveRun, assignManually, closeAssignment, discardRun, generateRun, getRun as getVolunteerRun, myAssignment, myVolunteer, reassign,
   volunteerOverview,
 } from "./modules/volunteers/service.js";
+import { ask, escalateConversation, getConversation, type HelpDeskIdentity } from "./modules/helpdesk/engine.js";
+import { helpdeskModelFrom, type HelpDeskModel } from "./modules/helpdesk/model.js";
+import {
+  acknowledge, addNote, addRequesterNote, assign, createOnBehalf, createOwnTicket, escalate, findRequester, getPolicy, logContact, markAlertSeen,
+  myAlerts, myTickets, raisePriority, reportEmergency, setPolicy, setStatus as setTicketStatus, supportQueue, ticketDetail,
+} from "./modules/support/service.js";
 import { automatedChannels, rankingModelFrom } from "./workers.js";
 import { issueDevToken, type IdentityResolver, type TokenVerifier } from "./platform/auth.js";
 import { AppError, parse, registerErrorHandler } from "./platform/errors.js";
-import { authenticate, principalOf, requireEditionAccess, requirePermission, resolvePrincipal } from "./platform/principal.js";
+import { authenticate, principalOf, requireAnyPermission, requireEditionAccess, requirePermission, resolvePrincipal, type Principal } from "./platform/principal.js";
 
 export type Clock = () => Date;
 export type AppDeps = {
@@ -61,6 +69,8 @@ export type AppDeps = {
   automated?: { email: boolean; sms: boolean };
   /** Document storage (TBD-51). Defaults from config. */
   fileStore?: FileStore;
+  /** Help Desk model (TBD-54). Defaults from config; null = no assistant (fallback answers only). */
+  helpdeskModel?: HelpDeskModel | null;
 };
 
 const Year = z.object({ year: z.coerce.number().int().min(2026).max(2100) });
@@ -75,6 +85,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const fileStore: FileStore = deps.fileStore ?? (config.storage.provider === "supabase"
     ? supabaseStore({ url: config.supabaseUrl!, serviceRoleKey: config.supabaseServiceRoleKey!, bucket: config.storage.bucket })
     : databaseStore(config.storage.fileLinkSecret));
+  const helpdeskModel = deps.helpdeskModel !== undefined ? deps.helpdeskModel : helpdeskModelFrom(config);
   const app = Fastify({
     logger: deps.logger ?? { level: config.logLevel, redact: ["req.headers.authorization", "req.headers.cookie"] },
     trustProxy: true,
@@ -392,6 +403,89 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     removePushToken(sql, principalOf(req), parse(z.object({ token: z.string().max(300) }), req.body).token));
   app.post("/v1/me/notifications/:id/read", { preHandler: [auth, requirePermission("notification.read_own")] }, async (req) =>
     markRead(sql, principalOf(req).account!.id, parse(Id, req.params).id));
+
+  // ---------------------------------------------------------------- AI Help Desk, mobile app channel (Phase 8, FR-HD-*)
+  // The identity comes from the authenticated session only (FR-HD-02); the engine never trusts names or ids in text.
+  const identityOf = (p: Principal): HelpDeskIdentity => {
+    if (!p.account) throw new AppError(409, "account_required", "Account needed", "Register or activate your account to use the Help Desk.");
+    return { userId: p.account.id, roles: p.roles, editionAccess: p.editionAccess };
+  };
+  const hdDeps = () => ({ sql, model: helpdeskModel, now: now(), onError: (err: unknown, where: string) => app.log.error({ err }, where) });
+  const EditionQuery = z.object({ edition: z.coerce.number().int().min(2026).max(2100) });
+  app.post("/v1/helpdesk/messages", {
+    preHandler: [auth, requirePermission("helpdesk.use")],
+    config: { rateLimit: { max: config.helpdesk.rateLimit, timeWindow: "1 minute", keyGenerator: (req) => req.headers.authorization ?? req.ip } },
+  }, async (req) => ask(hdDeps(), identityOf(principalOf(req)), parse(HelpDeskAsk, req.body)));
+  app.get("/v1/helpdesk/conversation", { preHandler: [auth, requirePermission("helpdesk.use")] }, async (req) =>
+    getConversation(sql, identityOf(principalOf(req)), parse(EditionQuery, req.query).edition));
+  app.post("/v1/helpdesk/conversations/:id/escalate", { preHandler: [auth, requirePermission("helpdesk.use")] }, async (req) => {
+    const { id } = parse(Id, req.params);
+    const { edition } = parse(EditionQuery, req.query);
+    return escalateConversation(hdDeps(), identityOf(principalOf(req)), edition, id, parse(HelpDeskEscalate, req.body ?? {}).note);
+  });
+
+  // ---------------------------------------------------------------- emergency control (FR-HD-10/11, AT-31)
+  // Never rate-limited and never gated on a role or edition access: anyone signed in can raise it. The contacts come
+  // back even when the alert cannot be recorded.
+  app.post("/v1/editions/:year/emergency", { preHandler: [auth, requirePermission("emergency.report")] }, async (req) =>
+    reportEmergency(sql, principalOf(req).account?.id ?? null, parse(Year, req.params).year, parse(EmergencyReport, req.body), now(),
+      { onError: (err) => app.log.error({ err }, "emergency alert could not be recorded") }));
+
+  // ---------------------------------------------------------------- own support requests (FR-SUP-15)
+  const ownT = { preHandler: [auth, requirePermission("support.request_own")] };
+  app.get("/v1/me/tickets", ownT, async (req) => {
+    const p = principalOf(req);
+    const q = parse(z.object({ edition: z.coerce.number().int().min(2026).max(2100).optional() }), req.query);
+    return p.account ? myTickets(sql, p.account.id, q.edition) : [];
+  });
+  app.post("/v1/me/tickets", ownT, async (req, reply) => {
+    const p = principalOf(req);
+    identityOf(p);   // an account is needed to own a ticket
+    return reply.status(201).send(await createOwnTicket(sql, p, parse(RequesterTicketCreate, req.body), now()));
+  });
+  app.post("/v1/me/tickets/:id/notes", ownT, async (req) => {
+    const p = principalOf(req);
+    identityOf(p);
+    return addRequesterNote(sql, p, parse(Id, req.params).id, parse(TicketText, req.body).text, now());
+  });
+
+  // ---------------------------------------------------------------- Customer Support dashboard (FR-SUP-01…14)
+  // Support staff handle tickets; Management reviews them read-only (FR-SUP-10) and receives escalations (TBD-27).
+  const sRead = { preHandler: [auth, requireAnyPermission(["support.handle", "support.review"])] };
+  const sWrite = { preHandler: [auth, requirePermission("support.handle")] };
+  const QueueQuery = z.object({
+    edition: z.coerce.number().int().min(2026).max(2100).optional(),
+    status: z.enum([...TICKET_STATUSES, "active"] as [string, ...string[]]).optional(),
+    mine: z.enum(["true", "false"]).optional(),
+  });
+  app.get("/v1/support/tickets", sRead, async (req) => {
+    const q = parse(QueueQuery, req.query);
+    return supportQueue(sql, principalOf(req), { edition: q.edition, status: q.status as never, mine: q.mine === "true" }, now());
+  });
+  app.get("/v1/support/tickets/:id", sRead, async (req) => ticketDetail(sql, principalOf(req), parse(Id, req.params).id, now()));
+  app.post("/v1/support/tickets", sWrite, async (req, reply) => {
+    const input = parse(SupportTicketCreate, req.body);
+    return reply.status(201).send(await createOnBehalf(sql, principalOf(req), input, now()));
+  });
+  app.post("/v1/support/tickets/:id/acknowledge", sWrite, async (req) => acknowledge(sql, principalOf(req), parse(Id, req.params).id, now()));
+  app.post("/v1/support/tickets/:id/status", sWrite, async (req) =>
+    setTicketStatus(sql, principalOf(req), parse(Id, req.params).id, parse(SupportStatusUpdate, req.body), now()));
+  app.post("/v1/support/tickets/:id/assign", sWrite, async (req) =>
+    assign(sql, principalOf(req), parse(Id, req.params).id, parse(SupportAssign, req.body).assigneeId, now()));
+  app.post("/v1/support/tickets/:id/notes", sWrite, async (req) => addNote(sql, principalOf(req), parse(Id, req.params).id, parse(SupportNote, req.body), now()));
+  app.post("/v1/support/tickets/:id/contact", sWrite, async (req) =>
+    logContact(sql, principalOf(req), parse(Id, req.params).id, parse(SupportContactLog, req.body), now()));
+  app.post("/v1/support/tickets/:id/escalate", sWrite, async (req) =>
+    escalate(sql, principalOf(req), parse(Id, req.params).id, parse(SupportEscalate, req.body).reason, now()));
+  app.post("/v1/support/tickets/:id/priority", sWrite, async (req) => raisePriority(sql, principalOf(req), parse(Id, req.params).id, now()));
+  app.get("/v1/support/requesters", sWrite, async (req) => findRequester(sql, parse(z.object({ q: z.string().trim().min(3).max(200) }), req.query).q));
+  const alertsG = { preHandler: [auth, requirePermission("support.alerts")] };
+  app.get("/v1/support/alerts", alertsG, async (req) => myAlerts(sql, principalOf(req)));
+  app.post("/v1/support/alerts/:id/seen", alertsG, async (req) =>
+    markAlertSeen(sql, principalOf(req), parse(z.object({ id: z.string().regex(/^\d{1,18}$/) }), req.params).id, now()));
+  app.get("/v1/support/editions/:year/policy", alertsG, async (req) => getPolicy(sql, parse(Year, req.params).year));
+  app.put("/v1/manage/editions/:year/support-policy", { preHandler: [auth, requirePermission("support.configure")] }, async (req) =>
+    setPolicy(sql, principalOf(req), parse(Year, req.params).year, parse(SupportPolicy, req.body)));
 
   // ---------------------------------------------------------------- development sign-in (never in production)
   if (config.authMode === "dev" && config.nodeEnv !== "production") {

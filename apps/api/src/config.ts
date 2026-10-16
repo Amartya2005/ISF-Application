@@ -57,6 +57,16 @@ const Env = z.object({
   STORAGE_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,62}$/).default("event-documents"),
   // Signs the short-lived document links of the database storage adapter. Random per process when unset.
   FILE_LINK_SECRET: z.string().min(32).optional().or(z.literal("").transform(() => undefined)),
+  // ---- Phase 8: AI Help Desk (TBD-35, TBD-54). Separate configuration and credentials from ranking (FR-HD-20).
+  // `stub` is NOT an AI (development only, refused in production); `none` answers with official links and offers a person.
+  HELPDESK_PROVIDER: z.enum(["none", "stub", "vertex"]).default("stub"),
+  HELPDESK_VERTEX_PROJECT: z.string().optional(),
+  HELPDESK_VERTEX_LOCATION: z.string().default("asia-south1"),
+  HELPDESK_VERTEX_MODEL: z.string().optional(),
+  HELPDESK_VERTEX_ACCESS_TOKEN: z.string().optional().or(z.literal("").transform(() => undefined)),
+  HELPDESK_VERTEX_SERVICE_ACCOUNT: z.string().email().optional().or(z.literal("").transform(() => undefined)),
+  // Questions per minute per signed-in user (SEC-05). The emergency control is never rate-limited.
+  HELPDESK_RATE_LIMIT: z.coerce.number().int().positive().default(20),
 });
 
 export type Config = {
@@ -81,6 +91,11 @@ export type Config = {
   sms: { provider: "none" | "log" | "msg91"; msg91?: { authKey: string; templates: Record<string, string | undefined> } };
   push: { provider: "none" | "log" | "expo"; expoAccessToken?: string };
   storage: { provider: "database" | "supabase"; bucket: string; fileLinkSecret?: string };
+  helpdesk: {
+    provider: "none" | "stub" | "vertex";
+    vertex?: { project: string; location: string; model: string; accessToken?: string; serviceAccount?: string };
+    rateLimit: number;
+  };
 };
 
 /**
@@ -104,6 +119,9 @@ export function productionBlockers(e: z.output<typeof Env>, privacyNoticeVersion
   }
   if (e.PUSH_PROVIDER === "log") blockers.push("PUSH_PROVIDER=log is for development only: it reports push messages as sent without sending them");
   if (e.STORAGE_PROVIDER !== "supabase") blockers.push("STORAGE_PROVIDER must be supabase: the database adapter is for development only (TBD-51)");
+  if (e.HELPDESK_PROVIDER !== "vertex") {
+    blockers.push("HELPDESK_PROVIDER must be vertex: the stub is not an AI and `none` gives only fallback answers (TBD-35, TBD-54)");
+  }
   if (e.DEV_NOW) blockers.push("DEV_NOW must not be set in production");
   if (e.LAUNCH_APPROVED !== "true") {
     blockers.push("LAUNCH_APPROVED=true is not set: complete and sign off docs/LAUNCH_CHECKLIST.md (live Supabase staging tests, approved privacy text, remaining launch checks)");
@@ -132,6 +150,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
   if (e.DEV_NOW && (production || e.AUTH_MODE !== "dev")) throw new Error("DEV_NOW is allowed only with AUTH_MODE=dev outside production");
   if (e.RANKING_PROVIDER === "vertex" && (!e.RANKING_VERTEX_PROJECT || !e.RANKING_VERTEX_MODEL)) {
     throw new Error("RANKING_VERTEX_PROJECT and RANKING_VERTEX_MODEL are required when RANKING_PROVIDER=vertex");
+  }
+  if (e.HELPDESK_PROVIDER === "vertex" && (!e.HELPDESK_VERTEX_PROJECT || !e.HELPDESK_VERTEX_MODEL)) {
+    throw new Error("HELPDESK_VERTEX_PROJECT and HELPDESK_VERTEX_MODEL are required when HELPDESK_PROVIDER=vertex");
   }
   if (e.NOTIFY_EMAIL_PROVIDER === "smtp" && (!e.SMTP_HOST || !e.NOTIFY_EMAIL_FROM)) {
     throw new Error("SMTP_HOST and NOTIFY_EMAIL_FROM are required when NOTIFY_EMAIL_PROVIDER=smtp");
@@ -184,5 +205,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, opts: { privacy
     },
     push: { provider: e.PUSH_PROVIDER, expoAccessToken: e.EXPO_ACCESS_TOKEN },
     storage: { provider: e.STORAGE_PROVIDER, bucket: e.STORAGE_BUCKET, fileLinkSecret: e.FILE_LINK_SECRET },
+    helpdesk: {
+      provider: e.HELPDESK_PROVIDER,
+      vertex: e.HELPDESK_PROVIDER === "vertex"
+        ? {
+            project: e.HELPDESK_VERTEX_PROJECT!, location: e.HELPDESK_VERTEX_LOCATION, model: e.HELPDESK_VERTEX_MODEL!,
+            accessToken: e.HELPDESK_VERTEX_ACCESS_TOKEN, serviceAccount: e.HELPDESK_VERTEX_SERVICE_ACCOUNT,
+          }
+        : undefined,
+      rateLimit: e.HELPDESK_RATE_LIMIT,
+    },
   };
 }

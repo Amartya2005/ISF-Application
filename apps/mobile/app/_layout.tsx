@@ -1,8 +1,19 @@
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
+import { Pressable, Text } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors } from "../components/ui";
 import { SessionProvider } from "../lib/session";
+
+/** Always visible (FR-HD-10): every screen's header opens the emergency screen, where 112 is the first control. */
+function EmergencyButton() {
+  return (
+    <Pressable onPress={() => router.push("/emergency")} accessibilityRole="button" accessibilityLabel="Emergency: call 112 or alert the event team"
+      hitSlop={10} style={{ backgroundColor: colors.danger, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+      <Text style={{ color: "#fff", fontWeight: "800", fontSize: 13 }}>Emergency</Text>
+    </Pressable>
+  );
+}
 
 export default function RootLayout() {
   return (
@@ -12,6 +23,7 @@ export default function RootLayout() {
         <Stack screenOptions={{
           headerStyle: { backgroundColor: colors.card }, headerTintColor: colors.accent,
           headerTitleStyle: { color: colors.ink, fontWeight: "700" }, contentStyle: { backgroundColor: colors.bg },
+          headerRight: () => <EmergencyButton />,
         }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="signin" options={{ title: "Sign in", headerBackVisible: false }} />
@@ -24,6 +36,9 @@ export default function RootLayout() {
           <Stack.Screen name="jury/[startupId]" options={{ title: "Startup" }} />
           <Stack.Screen name="volunteer" options={{ title: "Volunteer" }} />
           <Stack.Screen name="event" options={{ title: "Event information" }} />
+          <Stack.Screen name="emergency" options={{ title: "Emergency", headerRight: () => null }} />
+          <Stack.Screen name="help" options={{ title: "Help" }} />
+          <Stack.Screen name="requests" options={{ title: "My requests" }} />
         </Stack>
       </SessionProvider>
     </SafeAreaProvider>

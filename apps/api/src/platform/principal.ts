@@ -130,6 +130,20 @@ export function requirePermission(perm: Permission) {
   };
 }
 
+/** Route guard: holds at least one of the permissions (e.g. support staff, or Management reviewing read-only). */
+export function requireAnyPermission(perms: Permission[]) {
+  return async (req: FastifyRequest, _reply: FastifyReply) => {
+    const p = principalOf(req);
+    const held = permissionsOf(p);
+    if (perms.some((x) => held.has(x))) return;
+    const withoutMfa = permissionsOf(p, { ignoreMfa: true });
+    if (perms.some((x) => withoutMfa.has(x))) {
+      throw new AppError(403, "mfa_required", "Multi-factor authentication required", "Sign in again with your second factor");
+    }
+    throw forbidden();
+  };
+}
+
 /** Route guard for participant features of an edition (FR-IAM-12): `:year` must be in the caller's edition access. */
 export function requireEditionAccess() {
   return async (req: FastifyRequest) => {
