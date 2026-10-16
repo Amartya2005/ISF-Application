@@ -214,8 +214,9 @@ describe("Expo push adapter: failures", () => {
   });
 
   it("every notice action is audited", async () => {
-    const rows = await t.sql<{ action: string }[]>`select distinct action from audit_events where action like 'notice%' order by action`;
-    expect(rows.map((r) => r.action)).toEqual(["notice.edited", "notice.published", "notice.withdrawn", "notice_group.created",
+    // Sorted here, not in SQL: "." and "_" order differently under different database collations (CI uses en_US).
+    const rows = await t.sql<{ action: string }[]>`select distinct action from audit_events where action like 'notice%'`;
+    expect(rows.map((r) => r.action).sort()).toEqual(["notice.edited", "notice.published", "notice.withdrawn", "notice_group.created",
       "notice_group.member_removed", "notice_group.members_added"]);
   });
 });
