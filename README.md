@@ -146,8 +146,8 @@ The delivery plan contains ten phases:
 | 6 | Jury evaluation and volunteer assignment | Done |
 | 7 | Event information, documents, notices and push support | Done; live storage/push verification pending |
 | 8 | In-app AI Help Desk, Customer Support dashboard, tickets and emergency workflow | Done; live Help Desk model and organiser approvals (TBD-07, -27, -28) pending |
-| 9 | Offline event-information cache, reports, controlled exports and audit view | Planned |
-| 10 | Security review, penetration-test fixes, load/recovery testing, app-store submission and launch | Planned |
+| 9 | Offline event-information cache, reports, controlled exports and audit view | Done; retention purge is partial and documented |
+| 10 | Security review, penetration-test fixes, load/recovery testing, app-store submission and launch | Partially done; OD-02 built, hardening artifacts prepared, external verification and launch blocked |
 
 **WhatsApp integration is excluded from Phase 8 and is assigned to a separate workstream.** The Help Desk engine takes an authenticated identity from a channel adapter, so a WhatsApp adapter can reuse the same authorised tools and safeguards. This repository contains no WhatsApp APIs, webhooks, credentials or tables for it.
 
