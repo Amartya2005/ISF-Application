@@ -3,7 +3,7 @@
 **Built by Zeny2Labs for the International Startup Foundation (ISF) and GIET University**  
 **Current delivery:** Phases 1–9 of 10 implemented; Phase 10's hardening artifacts (load test, restore drill, security self-review, sign-out on reinstall) are prepared, not fully executed  
 **Production status:** **NOT APPROVED**  
-**Latest reported repository commit:** `f325148` (Phase 9 and 10)
+**Phase 9/10 implementation commit:** `f325148` · **Latest README/CI-fix commit before this update:** `fd8ed98`
 
 The Startup Jathara Management Platform supports event operations for Startup Jathara @ Dandakaranya, hosted at GIET University, Gunupur, Odisha. The 2026 event is scheduled for **18–20 December 2026**, with a pre-event day on **17 December 2026**. The platform supports year-specific workflows for the 2026 and 2027 editions.
 
@@ -149,9 +149,9 @@ The delivery plan contains ten phases:
 | 9 | Offline event-information cache, reports, controlled exports and audit view | Planned |
 | 10 | Security review, penetration-test fixes, load/recovery testing, app-store submission and launch | Planned |
 
-**WhatsApp integration is excluded from Phase 8 and is assigned to a teammate.** The Help Desk engine takes an authenticated identity from a channel adapter, so a WhatsApp adapter can reuse the same authorised tools and safeguards. This repository contains no WhatsApp APIs, webhooks, credentials or tables for it.
+**WhatsApp integration is excluded from Phase 8 and is assigned to a separate workstream.** The Help Desk engine takes an authenticated identity from a channel adapter, so a WhatsApp adapter can reuse the same authorised tools and safeguards. This repository contains no WhatsApp APIs, webhooks, credentials or tables for it.
 
-The app's sign-out-after-reinstall behaviour (OD-02) is also still outstanding and must be completed before app-store submission.
+The app's sign-out-after-reinstall behaviour (OD-02) is implemented, but still needs verification on a real Android device and iPhone before app-store submission.
 
 For exact deliverables, acceptance criteria, dependencies and open decisions, see [PHASES.md](docs/PHASES.md), [EXECUTION_PLAN.md](docs/EXECUTION_PLAN.md) and [DECISIONS.md](docs/DECISIONS.md).
 
